@@ -23,7 +23,7 @@ def main():
         files.extend(p for p in (ROOT / directory).rglob('*')
                      if p.is_file() and '__pycache__' not in p.parts and p.suffix in ('.py', '.json', '.md', '.yml'))
     files.extend(ROOT / name for name in (
-        'pyproject.toml', '.gitignore', '.env.example',
+        'pyproject.toml', '.gitignore', '.gitattributes', '.env.example',
         'tools/demo_offline.py', 'tools/prepare_public_repo.py',
         'docs/development/m2-p3-model-role-config-fixture.json',
     ))
@@ -39,6 +39,10 @@ def main():
         'Preserve existing user changes. Run relevant offline tests. Never commit keys, media, '
         'weights or outputs. Paid API calls require explicit user authorization and a finite budget. '
         'Keep M1 compatible and formal result groups immutable. Report unverified items honestly.\n', encoding='utf-8')
+    # Exported members are text. Keep checkout bytes stable across Windows/Linux.
+    for path in target.rglob('*'):
+        if path.is_file():
+            path.write_bytes(path.read_bytes().replace(b'\r\n', b'\n'))
     manifest = {p.relative_to(target).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                 for p in sorted(target.rglob('*')) if p.is_file()}
     (target / 'PUBLIC_EXPORT_MANIFEST.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
