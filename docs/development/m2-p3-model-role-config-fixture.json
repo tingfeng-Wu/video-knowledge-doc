@@ -1,0 +1,140 @@
+{
+  "schema_name": "ModelRoleRegistry",
+  "schema_version": "1.0",
+  "registry_id": "model-role-registry-fixture-p3",
+  "fixture_only": true,
+  "identity_algorithm": "sha256(canonical_json(role_without_role_cache_identity_sha256))",
+  "connection_profiles": {
+    "bailian_default": {
+      "backend": "openai_compatible",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "api_key_env": "VIDEO_DOC_LLM_API_KEY"
+    }
+  },
+  "engine_roles": {
+    "asr_engine": {
+      "role_config_version": "asr-engine-role-1.0",
+      "state": "on_demand",
+      "implementation": "faster-whisper",
+      "implementation_version": "1.2.1",
+      "model": "small",
+      "device": "cpu",
+      "compute_type": "int8"
+    },
+    "ocr_engine": {
+      "role_config_version": "ocr-engine-role-1.0",
+      "state": "deferred",
+      "implementation": null,
+      "implementation_version": null,
+      "selection_stage": "stage12"
+    }
+  },
+  "llm_roles": {
+    "boundary_model": {
+      "role_config_version": "boundary-model-role-1.0",
+      "enabled": true,
+      "connection_profile": "bailian_default",
+      "resolved_provider": {
+        "backend": "openai_compatible",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+      },
+      "model": "qwen3.7-flash",
+      "model_revision": null,
+      "revision_policy": "provider_model_name",
+      "generation": {
+        "temperature": 0.0,
+        "enable_thinking": false,
+        "max_tokens": null,
+        "timeout_seconds": 60.0
+      },
+      "input_contract": "UnifiedTimeline/2.0",
+      "output_contract": "ChapterPlan/2.0",
+      "prompt_bundle": {
+        "versions": ["chapter-boundary-unified-timeline-2.0"],
+        "content_sha256": "426c598129098d5f586348882463ad7f4ac64ede3988625aad8b582241d97e21",
+        "fixture_hash_only": true
+      },
+      "response_format": {"type": "json_object"},
+      "validation_id": "chapter-plan-validator-2-0",
+      "validation_retry_policy": "validation-feedback-1.0",
+      "cache_namespace": "boundary-model-unified-timeline-2-0",
+      "max_attempts_per_business_call": 2,
+      "alternate_model_fallback": "none",
+      "runtime_budget": {
+        "business_call_hard_limit": 1,
+        "supplier_request_hard_limit": 2
+      },
+      "role_cache_identity_sha256": "00bc3384d7e0be694434a739aa41a58f3d39f270056d765a3cd942508a311a70"
+    },
+    "content_model": {
+      "role_config_version": "content-model-role-1.0",
+      "enabled": true,
+      "connection_profile": "bailian_default",
+      "resolved_provider": {
+        "backend": "openai_compatible",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+      },
+      "model": "qwen3.7-flash",
+      "model_revision": null,
+      "revision_policy": "provider_model_name",
+      "generation": {
+        "temperature": 0.0,
+        "enable_thinking": false,
+        "max_tokens": null,
+        "per_call_max_tokens": {
+          "single_chapter": 1800,
+          "remaining_chapters_batch": 3600,
+          "global_composition": 1600
+        },
+        "timeout_seconds": 60.0
+      },
+      "input_contract": "M2DocumentCompositionInput/draft-1",
+      "output_contract": "StructuredDocumentContent/M2-next-draft-1",
+      "prompt_bundle": {
+        "versions": [
+          "document-fact-card-prompt-1.0",
+          "document-continuous-content-prompt-1.0",
+          "document-continuous-batch-prompt-1.0",
+          "document-continuous-global-prompt-1.0"
+        ],
+        "content_sha256": "113fc969fa5f3b12861c45cea55d1d094325bf2264c15f36edfef47337bd433d",
+        "fixture_hash_only": true
+      },
+      "response_format": {"type": "json_object"},
+      "validation_id": "continuous-content-validator-bundle-1.0",
+      "validation_retry_policy": "no-automatic-retry-1.0",
+      "cache_namespace": "content-model-continuous-document-1-0",
+      "max_attempts_per_business_call": 1,
+      "alternate_model_fallback": "none",
+      "runtime_budget": {
+        "business_call_hard_limit": 3,
+        "supplier_request_hard_limit": 3
+      },
+      "role_cache_identity_sha256": "7c8bd52303ca00a74bf5b7a3ac53e02c88395c5adf97bf3eba6d2e04e4042266"
+    },
+    "vision_caption_model": {
+      "role_config_version": "vision-caption-model-role-1.0",
+      "enabled": false,
+      "connection_profile": null,
+      "resolved_provider": null,
+      "model": null,
+      "model_revision": null,
+      "revision_policy": "disabled",
+      "generation": null,
+      "input_contract": null,
+      "output_contract": null,
+      "prompt_bundle": null,
+      "response_format": null,
+      "validation_id": null,
+      "validation_retry_policy": "none",
+      "cache_namespace": "vision-caption-disabled-1-0",
+      "max_attempts_per_business_call": 0,
+      "alternate_model_fallback": "none",
+      "runtime_budget": {
+        "business_call_hard_limit": 0,
+        "supplier_request_hard_limit": 0
+      },
+      "role_cache_identity_sha256": "80c888de593fa34c8ced1616eaeaedbe43cbe7a9211983f6bfa569e1007c9734"
+    }
+  }
+}

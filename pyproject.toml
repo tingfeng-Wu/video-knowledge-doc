@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "knowledge-video-doc"
+version = "0.1.0"
+description = "知识型视频结构化文档生成系统"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "av==18.1.0",
+    "faster-whisper==1.2.1",
+    "numpy==2.5.2",
+    "onnxruntime==1.29.0",
+    "python-dotenv==1.1.1",
+    "python-docx==1.2.0",
+    "rapidocr==3.9.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+]
+
+[project.scripts]
+video-doc = "video_doc.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["video_doc*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--basetemp=data/tmp/pytest -o cache_dir=data/tmp/pytest-cache"
