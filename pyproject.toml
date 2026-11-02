@@ -30,4 +30,4 @@ include = ["video_doc*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--basetemp=data/tmp/pytest -o cache_dir=data/tmp/pytest-cache"
+addopts = "-o cache_dir=data/tmp/pytest-cache"

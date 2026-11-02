@@ -14,7 +14,7 @@
   "docs/public/CONTRIBUTING.md": "af217a414fd8e6eba216212546d907f45bf705d49b1cb82e691826c696303706",
   "docs/public/README.md": "9aba5397cfc9bb11a75bf46f6c4b4278dac1f50381ecc3b74acaff15b7e94e63",
   "docs/public/TEAM_PLAN.md": "311d64734a61d63cbebe6fbf3bccd86caf37c04c9d88c64036f7da83691f4634",
-  "pyproject.toml": "a64b4f5bb71db0a1387702cfb57a190f666a51b005189d9318820927c129890b",
+  "pyproject.toml": "342612c91b8149cb65c4d13514cd12d0116d8fae5122f9fb5c69fc47f73c5049",
   "tests/test_asr_only_pipeline.py": "1c458189db8adf7399efd7c235b1a4d6b83fbefa612ff1d6dda0754499d4aa5e",
   "tests/test_asr_timeline.py": "d9c0b45c3dd94e044e71cdfb06809eb3c2c5efd77d30850d6fe36aa21fb43e6f",
   "tests/test_asr_transcribe.py": "b54c0f298b35627590003ee2ab43da91d7e445ffb49066db6fe1d67629384a4f",
