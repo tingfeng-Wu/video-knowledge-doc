@@ -2,9 +2,9 @@
 
 将本地知识型视频转换成带章节、正文、时间索引和代表帧的 JSON、Markdown、Word 文档。
 
-当前为命令行原型。已实现 ASR、抽帧、页面变化检测、可选 OCR、多模态时间轴、LLM 分章与文档导出；规则策略、PPO 和 Web 界面尚未实现。长视频与部分模型输出仍会触发严格校验失败，失败会保留记录并停止，不生成伪成功文档。
+当前为命令行原型。已实现 ASR、抽帧、页面变化检测、可选 OCR、多模态时间轴、LLM 分章与文档导出；Web界面为下一交付重点，规则与PPO作为独立探索；这些能力目前尚未实现。长视频与部分模型输出仍会触发严格校验失败，失败会保留记录并停止，不生成伪成功文档。
 
-**团队成员先读[团队执行计划与任务入口](docs/public/TEAM_PLAN.md)**：包含技术路线、0—30阶段、真实进度、中期前优先事项和可认领任务，无需先了解此前的开发讨论。
+**团队成员先读[团队执行计划与任务入口](https://github.com/tingfeng-Wu/video-knowledge-doc/blob/main/docs/public/TEAM_PLAN.md)**：包含技术路线、0—30阶段、真实进度、中期前优先事项和可认领任务，无需先了解此前的开发讨论。2026-11-03已调整为2027年1月软件交付，详见[当前交付方案](https://github.com/tingfeng-Wu/video-knowledge-doc/blob/main/docs/public/DELIVERY_PLAN.md)；有限VLM增强尚未接入。
 
 当前DEV01、COURSE01、LONG01已有真实图文文档并通过0 API缓存复跑；EXPLAINER01仍因重复引用校验失败而停止，M2尚未全部验收。
 
@@ -68,4 +68,4 @@ FFmpeg 未在 PATH 时，为命令加 `--ffmpeg-dir "D:\tools\ffmpeg\bin"`。任
 | `docs/public/` | 团队协作和当前能力说明 |
 | `data/tmp/`、`outputs/` | 本地产物，不提交 |
 
-参阅 [贡献说明](CONTRIBUTING.md)与[模块架构](docs/public/ARCHITECTURE.md)。代码库不附带原始视频、模型权重、个人材料或私人开发历史，成员需要准备自己的输入和 API Key。当前未附开源许可证；公开发布前由项目负责人确认代码与第三方材料的分发许可。
+参阅 [贡献说明](https://github.com/tingfeng-Wu/video-knowledge-doc/blob/main/CONTRIBUTING.md)与[模块架构](https://github.com/tingfeng-Wu/video-knowledge-doc/blob/main/docs/public/ARCHITECTURE.md)。代码库不附带原始视频、模型权重、个人材料或私人开发历史，成员需要准备自己的输入和 API Key。当前未附开源许可证；公开发布前由项目负责人确认代码与第三方材料的分发许可。
