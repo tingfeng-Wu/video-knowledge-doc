@@ -1,6 +1,6 @@
 # 知识型视频结构化文档生成系统
 
-将本地教学视频和知识讲解转换为带章节、正文、配图与时间位置的JSON、Markdown和Word讲义。
+将本地教学、演讲和科普等知识型视频转换为带章节、正文、配图与时间位置的JSON、Markdown和Word讲义。
 
 ## 功能
 
@@ -54,6 +54,16 @@ python -m video_doc.cli run-m2 MY01 --ocr auto --bounded-content
 
 `--dry-run`预览执行计划，`--allow-llm`启用本次付费模型调用。`--bounded-content`按章分批生成正文，正文供应商请求上限为12次，每批最多尝试2次。更多参数见命令帮助和[开发指南](DEVELOPMENT.md)。
 
+## 真实开发样例
+
+仓库提供教学、科普和演讲三类真实视频，以及对应的已有处理结果：
+
+```powershell
+python tools/unpack_dev_samples.py
+```
+
+样例包总计约208 MB，默认解包到`data/tmp/development-samples/`。中文课程和科普样例附带图文讲义与三格式导出，演讲样例附带ASR和帧处理结果。可用`--case COURSE01`单独解包，详细目录和读取方法见[真实开发样例](../../samples/development/README.md)。
+
 ## 生成结果
 
 导出文件保存在`outputs/<task_id>/m2/documents/formal-results/<export-id>/`：
@@ -77,6 +87,7 @@ manifest.json   文件与版本记录
 | `config/` | 模型角色配置 |
 | `tools/` | 示例和开发工具 |
 | `docs/` | 项目文档与数据示例 |
+| `samples/development/` | 随仓库分发的真实开发样例包 |
 | `data/tmp/`、`outputs/` | 本地运行数据与产物 |
 
 ## 文档与贡献

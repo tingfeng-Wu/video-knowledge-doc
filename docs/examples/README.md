@@ -10,4 +10,4 @@ python tools/demo_offline.py
 
 完整任务和导出包位于新创建的`data/tmp/offline-demo/run-<标识>/outputs/`。命令不调用真实API，不需要真实视频或模型权重。相关读取方式见[开发指南](../public/DEVELOPMENT.md)。
 
-真实案例由负责人另行协调，合成示例的内容和计数不作为真实视频处理效果。
+真实视频及已有产物见[真实开发样例](../../samples/development/README.md)。合成示例用于轻量功能检查。

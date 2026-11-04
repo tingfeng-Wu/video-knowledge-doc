@@ -37,6 +37,10 @@ data/tmp/offline-demo/run-<随机标识>/outputs/SYNTH01/m2/documents/formal-res
 
 只想先看JSON形态时，可打开[合成正文示例](../examples/synthetic-document-content.json)。该静态示例不附带上游组和图片，完整开发数据由上述命令生成。
 
+## 真实视频与已有结果
+
+运行`python tools/unpack_dev_samples.py`可解包教学、科普和演讲三类开发视频及已有结果。完整说明见[真实开发样例](../../samples/development/README.md)。课程和科普样例可使用本指南相同的loader读取正文并复用导出包，`output_root`由解包命令输出。
+
 ## 任务与产物目录
 
 ```text
@@ -143,7 +147,7 @@ CLI入口会读取项目根目录`.env`；服务直接调用时，可在启动�
 python -m pytest tests/test_document_composer_v2.py tests/test_document_exporter_v2.py -q
 ```
 
-完整离线测试命令仍为`python -m pytest -q`。部分真实案例检查在没有私有产物时会skip，Windows符号链接用例也可能skip，具体原因由pytest输出。中期任务不额外承担安装、跨机器或稳定性专项。
+完整离线测试命令仍为`python -m pytest -q`。部分真实案例检查使用固定的outputs目录，缺少对应任务时会skip，Windows符号链接用例也可能skip，具体原因由pytest输出。中期任务不额外承担安装、跨机器或稳定性专项。
 
 ## 合并与交接
 

@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "samples": [
+    {
+      "task_id": "COURSE01",
+      "archive": "course01-development-v1.zip",
+      "sha256": "775018b80982a2154dc6c5b00b9b95292458c072560028b91ce1fd212e5004b4",
+      "size_bytes": 43000385,
+      "file_count": 280,
+      "duration_seconds": 1076.0,
+      "source_sha256": "906c065e786994a90e546b30ca85defbd83ed6e4acabc708654b304b20e85b3a",
+      "results": {
+        "boundaries": "chapter-plan-997c1f6029d5",
+        "chapter-frames": "chapter-frame-selection-8bb15ed66ec2",
+        "content": "document-content-db15c28ea8e6",
+        "documents": "export-c6465ecb34f9",
+        "frames": "frame-set-6caa118e35e4",
+        "frames/page-changes": "page-change-set-4f5f4c972ae1",
+        "ocr": "ocr-set-82907d453e6a",
+        "timelines": "unified-timeline-38f074cd5640"
+      }
+    },
+    {
+      "task_id": "EXPLAINER01",
+      "archive": "explainer01-development-v1.zip",
+      "sha256": "f6f9dc3bae168f17dcc981644835307a9ee42515ef1985d3e7df487cdf4be14d",
+      "size_bytes": 93042903,
+      "file_count": 266,
+      "duration_seconds": 991.936,
+      "source_sha256": "e68fcf891453840cbfe15e0b1658756eeb5ffd74889a330c8e96345ffeb3c3b4",
+      "results": {
+        "boundaries": "chapter-plan-889abf11cfd4",
+        "chapter-frames": "chapter-frame-selection-1ca6e9270a83",
+        "content": "document-content-521da5e158a8",
+        "documents": "export-07cff9836c35",
+        "frames": "frame-set-ff4d9e465a99",
+        "frames/page-changes": "page-change-set-c5c65ffd1076",
+        "ocr": "ocr-set-f256de31d025",
+        "timelines": "unified-timeline-d6507e54216d"
+      }
+    },
+    {
+      "task_id": "TALK01",
+      "archive": "talk01-development-v1.zip",
+      "sha256": "8098312823488f6c0c437a95a356bfbf4ca08de3087449fb3d2100ee7c8c5c50",
+      "size_bytes": 71607883,
+      "file_count": 304,
+      "duration_seconds": 1448.739,
+      "source_sha256": "9b6311bfbecc6b13105391ae68d18be4c1b1afbd9eba3d992661bd4141f714ed",
+      "results": {
+        "frames": "frame-set-cbb4078805e6",
+        "frames/page-changes": "page-change-set-1835e1a2fa3d"
+      }
+    }
+  ]
+}

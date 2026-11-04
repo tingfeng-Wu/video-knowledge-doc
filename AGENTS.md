@@ -4,4 +4,4 @@ Read README.md, docs/public/PROJECT.md and the current task in docs/public/TEAM_
 
 Current focus: the A3 midterm branch, with the complete user-facing workflow: video input, task creation/generation/status, document preview, independent editing/re-export, downloads and PPT materials. Implementation is still pending. Contributors choose their approach and work on a feature branch; the project owner decides whether to merge. No day-by-day task schedule is required.
 
-Keep existing CLI behavior and immutable machine result groups compatible. Store edited results separately. Run checks relevant to the change and report the results. Keep credentials, raw media, weights and generated outputs out of commits. Real model calls need an agreed scope and finite budget.
+Keep existing CLI behavior and immutable machine result groups compatible. Store edited results separately. Run checks relevant to the change and report the results. Curated real sample packs are distributed in samples/development/. Keep credentials, weights and ordinary local outputs out of commits. Real model calls need an agreed scope and finite budget.
