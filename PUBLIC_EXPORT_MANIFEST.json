@@ -78,7 +78,7 @@
   "tests/test_video_probe.py": "16d613e274620bf262bf5c494be89d05f3d181b6b5856a4772f1f1b1c8f2ae96",
   "tools/build_dev_sample_pack.py": "d22fb20b290f3c6d0bb21b7bb2312c49d3e96203db0154bd519a8fdeafc469c7",
   "tools/demo_offline.py": "9f7ef94dd01b31bc5df28037b0cce70759e6cc70772e0e2df8fd69a488aeea47",
-  "tools/prepare_public_repo.py": "19b7d53953ad5dd5deccdf3101862cf5e895c6fb711b2c395397bc8bb9db5cb3",
+  "tools/prepare_public_repo.py": "6224417b61c99991c2163abd3f018df90f3a3fe360b89da6619d3eb73fc94631",
   "tools/unpack_dev_samples.py": "3873b8ab1e5ed67cd9447d7a6033fb9ac9267e1e12a891d49f2794f79c2c2efb",
   "video_doc/__init__.py": "ba49ad29e7a474c59c8462418190f265781ec58020fd188d41dfca2e482d8acc",
   "video_doc/asr_document_v2.py": "a72b920a8c606474e4b24b22324742f5c328bc66dd680546b219ed6a4a8c2e98",
