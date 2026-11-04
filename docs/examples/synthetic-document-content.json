@@ -1,0 +1,207 @@
+{
+  "chapters": [
+    {
+      "blocks": [
+        {
+          "block_id": "c0001-p001",
+          "content_origin": "timeline2_continuous",
+          "role": "explanation",
+          "source_chapter_ids": [
+            "c0001"
+          ],
+          "source_event_ids": [
+            "te000001"
+          ],
+          "source_unit_ids": [
+            "c0001-u001"
+          ],
+          "text": "开场讲解第一段。",
+          "type": "paragraph"
+        }
+      ],
+      "chapter_id": "c0001",
+      "end_ms": 90000,
+      "frames": [
+        {
+          "caption_form": "pe_ocr",
+          "caption_text": "画面于00:00:05发生变化（相对前一采样帧的变化强度1.0000）。该帧OCR识别文本（前1行）：text fr000002.png",
+          "decoded_ms": 5000,
+          "frame_id": "fr000002",
+          "rank": 1,
+          "tier": 1
+        },
+        {
+          "caption_form": "pe_ocr",
+          "caption_text": "画面于00:00:15发生变化（相对前一采样帧的变化强度1.0000）。该帧OCR识别文本（前1行）：text fr000004.png",
+          "decoded_ms": 15000,
+          "frame_id": "fr000004",
+          "rank": 2,
+          "tier": 1
+        },
+        {
+          "caption_form": "pe_ocr",
+          "caption_text": "画面于00:00:25发生变化（相对前一采样帧的变化强度1.0000）。该帧OCR识别文本（前1行）：text fr000006.png",
+          "decoded_ms": 25000,
+          "frame_id": "fr000006",
+          "rank": 3,
+          "tier": 1
+        }
+      ],
+      "index": 1,
+      "start_ms": 0,
+      "title": "开场",
+      "units_referenced": 1
+    },
+    {
+      "blocks": [
+        {
+          "block_id": "c0002-p001",
+          "content_origin": "timeline2_continuous",
+          "role": "explanation",
+          "source_chapter_ids": [
+            "c0002"
+          ],
+          "source_event_ids": [
+            "te000002",
+            "te000003"
+          ],
+          "source_unit_ids": [
+            "c0002-u001"
+          ],
+          "text": "中段与结尾讲解。",
+          "type": "paragraph"
+        }
+      ],
+      "chapter_id": "c0002",
+      "end_ms": 600000,
+      "frames": [],
+      "index": 2,
+      "start_ms": 90000,
+      "title": "中段",
+      "units_referenced": 1
+    }
+  ],
+  "content_id": "document-content-ccc574f68c5c",
+  "content_versions": {
+    "block_policy": "m2-document-block-policy-1.0",
+    "content_policy": "document-timeline-evidence-only-1.0",
+    "schema": "3.0",
+    "unit_policy": "continuous-te-unit-1.0",
+    "validator": "structured-document-content-validator-3.0"
+  },
+  "coverage": {
+    "chapters": [
+      {
+        "chapter_id": "c0001",
+        "covered_event_count": 1,
+        "covered_unit_count": 1,
+        "event_count": 1,
+        "unit_count": 1
+      },
+      {
+        "chapter_id": "c0002",
+        "covered_event_count": 2,
+        "covered_unit_count": 1,
+        "event_count": 2,
+        "unit_count": 1
+      }
+    ],
+    "policy_version": "m2-unit-coverage-2.0",
+    "totals": {
+      "covered_event_count": 3,
+      "covered_unit_count": 2,
+      "event_count": 3,
+      "full_coverage": true,
+      "unit_count": 2
+    }
+  },
+  "generation": {
+    "backend": "mock",
+    "content_policy_version": "document-timeline-evidence-only-1.0",
+    "enable_thinking": false,
+    "mode": "content-composer-v2-mock",
+    "model": "qwen3.7-flash",
+    "per_call_max_tokens": {
+      "batch": 8192,
+      "global": 1600,
+      "single": 1800
+    },
+    "prompt_versions": {
+      "batch": "document-content-batch-unified-timeline-2.1",
+      "global": "document-content-global-unified-timeline-2.0",
+      "single": "document-content-single-unified-timeline-2.1"
+    },
+    "status": "success",
+    "temperature": 0.0,
+    "unit_policy_version": "continuous-te-unit-1.0",
+    "validator_version": "structured-document-content-validator-3.0",
+    "validator_versions": {
+      "batch": "document-content-batch-validator-2-0",
+      "global": "document-content-global-validator-2-0",
+      "single": "document-content-single-validator-2-0"
+    }
+  },
+  "language": "zh-CN",
+  "overall_conclusion": [
+    {
+      "block_id": "conclusion-p001",
+      "content_origin": "timeline2_continuous",
+      "role": "conclusion",
+      "source_chapter_ids": [
+        "c0001",
+        "c0002"
+      ],
+      "source_event_ids": [],
+      "source_unit_ids": [],
+      "text": "全文两章即可覆盖。",
+      "type": "paragraph"
+    }
+  ],
+  "overview": [
+    {
+      "block_id": "overview-p001",
+      "content_origin": "timeline2_continuous",
+      "role": "overview",
+      "source_chapter_ids": [
+        "c0001",
+        "c0002"
+      ],
+      "source_event_ids": [],
+      "source_unit_ids": [],
+      "text": "三段内容依次展开。",
+      "type": "paragraph"
+    }
+  ],
+  "schema_name": "StructuredDocumentContent",
+  "schema_version": "3.0",
+  "source_chapter_frame_selection": {
+    "caption_template_version": "deterministic-caption-zh-1.0",
+    "manifest_sha256": "7300025c015693e84c6e8d49178f3ff9fc805594053801571e08089226cef027",
+    "result_id": "chapter-frame-selection-5725303ba32b",
+    "selection_policy_version": "chapter-frame-policy-1.0"
+  },
+  "source_frame_set": {
+    "frame_count": 8,
+    "frame_set_id": "frame-set-test00000001",
+    "manifest_sha256": "fde38e74c05eb9d3ee677f6e241edad64b7e132b04e7100fe3709b1768ecb071"
+  },
+  "source_language": "en",
+  "source_plan": {
+    "boundary_count": 2,
+    "manifest_sha256": "6a45877301d3f292568817189473c0465a64afa467e8ff0bc0bc04489044c8e8",
+    "quality_level": "normal",
+    "result_id": "chapter-plan-c4524927ab65",
+    "result_source": "primary",
+    "strategy": "llm"
+  },
+  "source_timeline": {
+    "event_count": 9,
+    "manifest_sha256": "7628e397e8a518b4a11fe2942833ab20cedae50d081f84a47ba9abae0cbc0bf9",
+    "sha256": "c5f1563dc7fba26979183c6483e4865645de0ec72676db3808014b502c8257f1",
+    "timeline_id": "unified-timeline-30107a4ffd07",
+    "transcript_event_count": 3
+  },
+  "strategy": "llm",
+  "task_id": "SYNTH01",
+  "title": "测试视频结构化文档"
+}

@@ -1,5 +1,7 @@
 # Repository instructions
 
-Read README.md and CONTRIBUTING.md. Use Python 3.12. Preserve existing user changes. Run relevant offline tests. Never commit keys, media, weights or outputs. Paid API calls require explicit user authorization and a finite budget. Keep M1 compatible and formal result groups immutable. Report unverified items honestly.
+Read README.md, docs/public/PROJECT.md and the current task in docs/public/TEAM_PLAN.md. docs/public/DEVELOPMENT.md and the public tests describe the code and data interfaces; private development records are not required for onboarding.
 
-Current delivery scope (2026-11-04): read docs/public/DELIVERY_PLAN.md and TEAM_PLAN.md. January 2027 software delivery takes priority; VLM is a bounded optional enhancement and RL is independent exploration, with no dependency blocking Web or core software. VLM, Web, application editing and RL remain unimplemented. Track current development using A0-A7: A0-A2 closeout is complete; A3 second-machine reproduction and midterm demo preparation is next. Citation coverage 2.0 and single/batch prompts 2.1 are implemented with legacy-group validation and replay compatibility. Offline editorial documents are separate artifacts and do not prove automatic semantic quality. Paid calls and image transfer still require explicit scope and finite-budget authorization.
+Current focus: the A3 midterm branch, with existing-result preview, independent editing/re-export and PPT materials. Implementation is still pending. Contributors choose their approach and work on a feature branch; the project owner decides whether to merge. No day-by-day task schedule is required.
+
+Keep existing CLI behavior and immutable machine result groups compatible. Store edited results separately. Run checks relevant to the change and report the results. Keep credentials, raw media, weights and generated outputs out of commits. Real model calls need an agreed scope and finite budget.

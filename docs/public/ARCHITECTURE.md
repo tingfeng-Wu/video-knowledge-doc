@@ -1,33 +1,49 @@
-# 开发入口与模块边界
+# 架构说明
 
 ## 当前处理链
 
-`cli.py`解析参数，`m2_pipeline.py`编排以下模块：
+```mermaid
+flowchart TD
+  A[本地视频] --> B[媒体检查与任务初始化]
+  B --> C[音频提取与ASR]
+  B --> D[抽帧与页面变化]
+  D --> E[可选OCR]
+  C --> F[统一时间轴]
+  E --> F
+  F --> G[文本LLM分章]
+  G --> H[章节代表帧选择]
+  H --> I[文本LLM章内正文]
+  I --> J[JSON / Markdown / Word导出]
+```
 
-1. `video_probe.py`、`task_workspace.py`：检查源视频身份并初始化任务。
-2. `audio_extract.py`、`asr_transcribe.py`、`asr_timeline.py`：本地音频、ASR与M1文本时间轴。
-3. `frame_sampler.py`、`page_change_detector.py`、`ocr_extractor.py`：抽帧、页面变化候选与可选OCR。
-4. `unified_timeline.py`、`timeline_builder_v2.py`：只读组合来源，生成Timeline 2.0。
-5. `boundary_planner_v2.py`：LLM生成ChapterPlan 2.0。
-6. `chapter_frames.py`：按章选择代表帧并生成确定性说明。
-7. `document_composer_v2.py`：仅以章内ASR文本生成正文，发布StructuredDocumentContent 3.0。
-8. `document_exporter_v2.py`：确定性导出JSON、Markdown和内嵌图片的Word。
+OCR和画面事件主要用于时间关联、选图和模板说明。当前正文主要来自ASR，尚无VLM直接理解图片。计划中的Web结果页和编辑功能位于上述导出链周围，读取已有结果并保存独立编辑版本。
 
-模型角色由`model_roles.py`校验，连接与生成参数来自`config/model-roles.json`；网络传输由`llm_adapter.py`提供。测试通过注入transport避免真实付费请求。
+## 代码职责
 
-## 产物与缓存
+| 入口/模块 | 职责 |
+|---|---|
+| `cli.py`、`m2_pipeline.py` | 命令参数及全链路编排 |
+| `video_probe.py`、`task_workspace.py` | 视频检查、任务创建和源身份 |
+| `audio_extract.py`、`asr_transcribe.py`、`asr_timeline.py` | 音频、带时间戳转写和文本时间轴 |
+| `frame_sampler.py`、`page_change_detector.py`、`ocr_extractor.py` | 候选帧、页面变化和OCR |
+| `unified_timeline.py`、`timeline_builder_v2.py` | Timeline 2.0及来源对齐 |
+| `boundary_planner_v2.py` | ChapterPlan 2.0分章 |
+| `chapter_frames.py` | 章节配图及确定性说明 |
+| `document_composer_v2.py` | StructuredDocumentContent 3.0正文生成与发布 |
+| `document_exporter_v2.py` | 自包含三格式导出包 |
+| `model_roles.py`、`llm_adapter.py` | 模型配置、角色校验与网络传输 |
+| `boundary_evaluation.py` | 内部章节边界评价工具 |
 
-M1输出保留在任务原目录；M2域位于`outputs/<task_id>/m2/`。每个域使用不可变结果组、哈希manifest及最后切换的`current.json`，失败不覆盖成功组。缓存与来源、模型角色、提示词、参数和策略版本绑定。读取结果应使用各模块公开loader，并检查来源身份，不按目录日期猜测最新组。
+模型配置位于`config/model-roles.json`，目前分章与正文使用百炼的文本LLM角色。配置文件登记连接和参数，密钥由本地环境提供。测试注入脚本transport实现零真实请求。
 
-`--bounded-content`逐章按最多6个连续单元生成正文，再生成全文字段，最多12次供应商请求。原始响应及调用计数进入结果组并可重放验证。既有已发布正文可在验证当前上游后固定复用，保留其原生成版本。
+## 产物与兼容
 
-## 下一阶段接口
+每个任务保存在`outputs/<task_id>/`，M2产物位于其`m2/`子目录。各阶段使用不可变结果组、文件哈希manifest及指向当前组的`current.json`。缓存绑定来源身份与相应配置，失败保留审计记录。
 
-`boundary_evaluation.py`已实现边界匹配与评价，真实人工标注数据尚未提供。规则分章和PPO需要共享候选边界与特征、保持训练/验证/测试视频隔离，并输出统一章节计划供后续内容模块消费。当前不要假定PPO、候选生成器或Web服务已经存在。
+正文有两种生成路径：历史三调用方式，以及`--bounded-content`逐章每最多6个单元分批的方式。有界路径最多12次供应商请求，每批最多2次尝试，成功批次可复用。
 
-修改模块前先阅读对应测试，优先添加能复现实际故障的用例。普通缺陷修复保持Schema和M1行为兼容；涉及新Schema、算法、模型配置或预算时先在任务中说明设计及迁移，再实施。
+coverage 2.0允许不同段落合理复用同一来源单元，检查来源、章内归属、覆盖及单调顺序。single/batch提示词为2.1。旧组按保存的coverage/prompt版本复验，原始响应重放能够复现对应结果。
 
+编辑内容作为独立版本保存，引用原机器结果，不写回机器正式组；具体编辑数据接口由支线实现者设计。这项当前尚未实现。
 
-## 2026-11-03交付范围调整（待实现部分）
-
-稳定ASR链路复用；新增章内少量图片+ASR直接输入现成VLM的可选模式，约一周主动投入止损，不训练VLM、不单独搭视觉解析流水线、不同时改分章。先设计引用约束兼容修复，再实施最小Web；预览/下载必须，基础编辑按余量保存独立人工版本。规则和PPO独立探索，不阻塞软件。新增模式和交互均尚未实现，API/图片外发仍需另批。详见[交付方案](DELIVERY_PLAN.md)。
+模块名和注释保留了旧M1/M2及阶段号，当前工作安排见[项目总览](PROJECT.md)。常用数据结构、读取接口和测试入口见[开发指南](DEVELOPMENT.md)。
