@@ -2,7 +2,7 @@
 
 ## 阅读顺序
 
-新成员先读[项目总览](PROJECT.md)和[当前任务](MIDTERM_BRANCH_PLAN.md)，运行README中的合成示例，再按任务查看相关模块和测试。当前中期支线主要涉及已有结果预览、基础编辑和再导出。
+新成员先读[项目总览](PROJECT.md)和[当前任务](MIDTERM_BRANCH_PLAN.md)，运行README中的合成示例，再按任务查看相关模块和测试。当前中期支线覆盖视频输入、任务创建/生成与状态、图文预览、基础编辑和导出下载的完整主流程界面。
 
 源码头部保留了一些原阶段裁决文档名称，它们用于追溯开发历史。常用接口和数据结构可通过本指南、合成示例及公开测试了解，接手当前任务无需读取私有仓库。
 
@@ -115,9 +115,29 @@ render_export_docx(content, embedded)      # 返回(docx_bytes, failed_frame_ids
 
 这些函数负责渲染，不负责编辑版本登记或正式组发布。实现编辑功能时，保存、来源记录和所选版本导出需由新增服务串接。选择复用哪些接口由承担者根据设计确定。
 
+## 从界面接入现有生成流程
+
+完整编排入口是`video_doc.m2_pipeline.run_task_m2`。主要参数包括`output_root`、`task_id`，以及`source_video`、`ffmpeg_dir`、`ocr_mode`、`model_registry`、`allow_llm`、`dry_run`、`bounded_content`和`progress`。
+
+```python
+from video_doc.m2_pipeline import run_task_m2
+
+plan = run_task_m2(
+    "outputs", "MY01",
+    source_video="path/to/lesson.mp4",
+    ocr_mode="auto",
+    bounded_content=True,
+    dry_run=True,
+)
+```
+
+`dry_run=True`返回运行计划，执行时返回`M2RunSummary`。可通过`progress(stage, status, payload)`回调接收实际阶段状态，成功摘要包含结果ID、缓存命中、产物路径和调用计数。任务的异步执行及页面刷新方式由实现者选择。
+
+CLI入口会读取项目根目录`.env`；服务直接调用时，可在启动时加载该配置或使用环境变量。模型密钥保留在服务端，真实调用通过现有授权与预算参数执行。源码中的`run_task_m2`签名、`M2RunPlan`、`M2RunSummary`和相应测试给出了完整接口。
+
 ## 功能检查
 
-中期支线重点检查：已有结果读取、图文展示、编辑保存后重新打开、机器结果保留、选定版本导出和删图一致性。可复用上述测试的合成fixture，补充覆盖新增行为的检查。
+中期支线检查视频输入、任务创建和阶段状态、结果读取/图文展示、编辑保存后重新打开、原机器结果保留、选定版本导出和删图一致性。可复用上述测试的合成fixture，补充覆盖新增行为的检查。
 
 ```bash
 python -m pytest tests/test_document_composer_v2.py tests/test_document_exporter_v2.py -q
