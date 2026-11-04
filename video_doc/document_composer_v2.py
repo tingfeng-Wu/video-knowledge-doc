@@ -219,7 +219,16 @@ CONTENT_VALIDATOR_VERSION = "structured-document-content-validator-3.0"
 CONTENT_POLICY_VERSION = "document-timeline-evidence-only-1.0"
 UNIT_POLICY_VERSION = "continuous-te-unit-1.0"
 BLOCK_POLICY_VERSION = "m2-document-block-policy-1.0"
-COVERAGE_POLICY_VERSION = "m2-unit-coverage-1.0"
+# 引用约束修复（2026-11-03，交接DC-20261103-01收口阶段）：coverage策略由1.0
+# （每单元恰好引用一次）升级为2.0（每单元至少一次、引用位置单调非降、允许同一
+# 来源单元被多个自然段合理复用）。旧正式组仍记录1.0；validator按版本分派；重放
+# 线程化传入组内存储版本，旧组逐字节复现、content_id不变。本常量不进缓存身份
+# （见_content_cache_identity），故bump不影响任何既有llm-cache命中与三成功任务复跑。
+COVERAGE_POLICY_VERSION_LEGACY = "m2-unit-coverage-1.0"
+COVERAGE_POLICY_VERSION = "m2-unit-coverage-2.0"
+COVERAGE_POLICY_VERSIONS = frozenset(
+    {COVERAGE_POLICY_VERSION_LEGACY, COVERAGE_POLICY_VERSION}
+)
 
 ROLE_NAME = "content_model"
 # 修复裁决D2.1：角色配置2.0（validation-feedback-1.0一次纠错、预算{3,6}）。
@@ -241,11 +250,18 @@ CALL_BATCH = "batch"
 CALL_GLOBAL = "global"
 CALL_SLOTS = (CALL_SINGLE, CALL_BATCH, CALL_GLOBAL)
 
-PROMPT_VERSIONS = {
+LEGACY_PROMPT_VERSIONS = {
     CALL_SINGLE: "document-content-single-unified-timeline-2.0",
     CALL_BATCH: "document-content-batch-unified-timeline-2.0",
     CALL_GLOBAL: "document-content-global-unified-timeline-2.0",
 }
+# 2.1同步coverage-2.0生成约束；旧组按保存的完整版本映射重放。
+PROMPT_VERSIONS = {
+    CALL_SINGLE: "document-content-single-unified-timeline-2.1",
+    CALL_BATCH: "document-content-batch-unified-timeline-2.1",
+    CALL_GLOBAL: LEGACY_PROMPT_VERSIONS[CALL_GLOBAL],
+}
+
 VALIDATION_IDS = {
     CALL_SINGLE: "document-content-single-validator-2-0",
     CALL_BATCH: "document-content-batch-validator-2-0",
@@ -1254,7 +1270,7 @@ DOCUMENT_CONTENT_SINGLE_BATCH_SYSTEM = (
     "不得新增或强化数字、实体、诊断、否定、建议、因果和结论。标题仅供理解，不要返回标题；"
     "不要机械逐单元复述。"
     "段落规则：每段文本非空；段落顺序与单元顺序一致；每段的source_unit_ids只引用直接支持本段的单元，"
-    "按给定顺序升序且相邻连续；每个unit_id必须在全部段落中恰好出现一次；不得跨章引用单元；"
+    "按给定顺序升序且相邻连续；每个unit_id在全部段落中至少出现一次；允许不同段落引用同一单元的不同内容，禁止重复正文；所有段落展开后的引用单元位置必须单调非降；不得跨章引用单元；"
     "每章段落总数至多8段。"
     "只返回单个JSON对象。若输入顶层含units（单章），返回"
     '{"paragraphs":[{"source_unit_ids":["c0001-u001"],"text":"连续正文"}]}；'
@@ -1398,6 +1414,22 @@ def _issue_message(issues: Sequence[Mapping[str, Any]]) -> str:
     return f"响应未通过业务校验：[{codes}]"
 
 
+def _references_monotonic(referenced: Sequence[str], position: Mapping[str, int]) -> bool:
+    """引用约束修复（2026-11-03）：引用单元位置序列必须单调非降。
+
+    允许同一单元被连续多段复用（位置相等），禁止回退到更早单元（位置下降）。
+    调用方保证referenced仅含已知单元（未知/跨章已先行拦截）。
+    """
+
+    last = -1
+    for entry in referenced:
+        index = position[entry]
+        if index < last:
+            return False
+        last = index
+    return True
+
+
 def _normalize_paragraph_list(
     paragraphs: Any,
     ledger: ChapterLedger,
@@ -1408,8 +1440,16 @@ def _normalize_paragraph_list(
     """校验一个章作用域的段落列表并返回规范化形；不追加致命异常，只累积issues。
 
     检查项（全部映射到15码封闭词表）：段落对象形态、文本非空、数量≤8、
-    unit_id引用（未知/跨章/重复/覆盖/顺序）。strict_exact_units为True时按
-    整章账本要求"恰好一次且按序全覆盖"。
+    unit_id引用（未知/跨章/重复/覆盖/顺序）。
+
+    引用约束修复（2026-11-03，交接DC-20261103-01）：原"每单元恰好引用一次且
+    引用序列逐字等于账本"被证实过严——它把"一个~800字符来源单元被忠实地写成
+    多个互不重复的自然段"这类合理复用误判为UNIT_DUPLICATE_REFERENCE（EXPLAINER01
+    c0002实证）。现放宽为coverage策略2.0语义：①每单元至少被引用一次（覆盖不变，
+    可追溯）；②引用位置单调非降（时序不变）；③UNIT_DUPLICATE_REFERENCE收窄重定义
+    为"同一单元被≥2个文本完全相同的段落引用"的真重复内容。旧exactly-once组每单元
+    仅一段引用，收窄守卫与单调序对其为no-op，规范化输出逐字节不变，重放向后兼容。
+    strict_exact_units参数保留（两调用方均传True），现统一走放宽后的覆盖/单调序判定。
     """
 
     if not isinstance(paragraphs, list) or not paragraphs:
@@ -1443,26 +1483,30 @@ def _normalize_paragraph_list(
             issues.append(_issue("PARAGRAPH_NOT_OBJECT", "source_unit_ids"))
             fatal = True
             continue
+        # 段内引用去重保序（旧组段内本无重复，去重为no-op；新组防["u001","u001"]
+        # 形态污染block.source_unit_ids并触发_validate_block的块内重复项硬失败）。
+        deduped_unit_ids = list(dict.fromkeys(source_unit_ids))
         clean.append(
             {
-                "source_unit_ids": list(source_unit_ids),
+                "source_unit_ids": deduped_unit_ids,
                 "text": text.strip(),
             }
         )
-        referenced.extend(source_unit_ids)
+        referenced.extend(deduped_unit_ids)
     if fatal:
         return None
-    seen: set[str] = set()
-    for entry in referenced:
-        if entry in seen:
-            issues.append(_issue("UNIT_DUPLICATE_REFERENCE", entry))
-            return None
-        seen.add(entry)
-    cross = [
-        entry
-        for entry in referenced
-        if entry not in position and _CHAPTER_ID_RE.fullmatch(str(entry).split("-")[0])
-    ]
+    seen: set[str] = set(referenced)
+    # UNIT_DUPLICATE_REFERENCE收窄重定义：仅当同一单元被≥2个"文本完全相同"的段落
+    # 引用时判为真重复内容。旧exactly-once组每单元仅一段引用，此守卫恒不触发。
+    texts_by_unit: dict[str, set[str]] = {}
+    for paragraph in clean:
+        collapsed = " ".join(paragraph["text"].split())
+        for entry in paragraph["source_unit_ids"]:
+            bucket = texts_by_unit.setdefault(entry, set())
+            if collapsed in bucket:
+                issues.append(_issue("UNIT_DUPLICATE_REFERENCE", entry))
+                return None
+            bucket.add(collapsed)
     unknown = [entry for entry in referenced if entry not in position]
     if strict_exact_units:
         for entry in unknown:
@@ -1479,7 +1523,7 @@ def _normalize_paragraph_list(
             missing = sorted(set(unit_ids) - seen)
             issues.append(_issue("UNIT_COVERAGE_INCOMPLETE", missing[0] if missing else "units"))
             return None
-        if referenced != unit_ids:
+        if not _references_monotonic(referenced, position):
             issues.append(_issue("UNIT_ORDER_VIOLATION", "units"))
             return None
         return clean
@@ -1496,7 +1540,7 @@ def _normalize_paragraph_list(
         missing = sorted(set(unit_ids) - seen)
         issues.append(_issue("UNIT_COVERAGE_INCOMPLETE", missing[0] if missing else "units"))
         return None
-    if referenced != unit_ids:
+    if not _references_monotonic(referenced, position):
         issues.append(_issue("UNIT_ORDER_VIOLATION", "units"))
         return None
     return clean
@@ -1708,6 +1752,8 @@ def assemble_document_content(
     mode: str,
     backend: str,
     per_call_max_tokens: Mapping[str, int] | None = None,
+    coverage_policy_version: str | None = None,
+    prompt_versions: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """三调用已验证输出＋四个上游绑定 → 无content_id的StructuredDocumentContent 3.0。
 
@@ -1720,6 +1766,12 @@ def assemble_document_content(
     effective_max_tokens = (
         dict(PER_CALL_MAX_TOKENS) if per_call_max_tokens is None else dict(per_call_max_tokens)
     )
+    # 引用约束修复（2026-11-03）：coverage策略版本同样线程化——新组用当前常量2.0，
+    # 组复验重放传入旧组存储值（1.0），保证旧组重装配逐字节复现、content_id不变。
+    effective_coverage_policy_version = (
+        COVERAGE_POLICY_VERSION if coverage_policy_version is None else coverage_policy_version
+    )
+    effective_prompt_versions = PROMPT_VERSIONS if prompt_versions is None else prompt_versions
     plan = inputs.plan
     selection = inputs.selection
     ledgers = inputs.ledgers
@@ -1777,7 +1829,13 @@ def assemble_document_content(
                 "units_referenced": len(ledger.units),
             }
         )
-        covered_units = sum(len(block["source_unit_ids"]) for block in blocks)
+        # 引用约束修复（2026-11-03）：覆盖单元数按"去重计数"而非"逐块求和"。
+        # 旧exactly-once组每单元仅落一个block，去重==求和==len(units)，数值不变、
+        # 重装配逐字节复现；新2.0组同一单元可跨多块，去重计数才等于真实覆盖单元数，
+        # full_coverage=(unit_count==covered_unit_count)语义对两版本一致（均要求全覆盖）。
+        covered_units = len(
+            {unit_id for block in blocks for unit_id in block["source_unit_ids"]}
+        )
         coverage_chapters.append(
             {
                 "chapter_id": ledger.chapter_id,
@@ -1834,7 +1892,7 @@ def assemble_document_content(
         "overall_conclusion": conclusion_blocks,
         "chapters": chapters,
         "coverage": {
-            "policy_version": COVERAGE_POLICY_VERSION,
+            "policy_version": effective_coverage_policy_version,
             "chapters": coverage_chapters,
             "totals": {
                 "unit_count": totals_units,
@@ -1852,9 +1910,9 @@ def assemble_document_content(
             "temperature": 0.0,
             "enable_thinking": False,
             "prompt_versions": {
-                "single": PROMPT_VERSIONS[CALL_SINGLE],
-                "batch": None if batch_skipped else PROMPT_VERSIONS[CALL_BATCH],
-                "global": PROMPT_VERSIONS[CALL_GLOBAL],
+                "single": effective_prompt_versions[CALL_SINGLE],
+                "batch": None if batch_skipped else effective_prompt_versions[CALL_BATCH],
+                "global": effective_prompt_versions[CALL_GLOBAL],
             },
             "content_policy_version": CONTENT_POLICY_VERSION,
             "unit_policy_version": UNIT_POLICY_VERSION,
@@ -1966,6 +2024,18 @@ def validate_structured_document_content_v3(
     # 账本重推导（与装配路径同一纯函数）
     ledgers = _build_ledgers(timeline_index, plan)
     chapter_count = len(ledgers)
+    # 引用约束修复（2026-11-03，交接DC-20261103-01）：按组内记录的coverage策略
+    # 版本分派校验语义——1.0旧组保持"每单元恰一次且按账本顺序"逐字不放宽；
+    # 2.0新组按"每单元至少一次＋引用位置单调非降"。旧组解释不因新规则改变。
+    coverage_block = content["coverage"]
+    coverage_policy = (
+        coverage_block["policy_version"]
+        if isinstance(coverage_block, dict) and "policy_version" in coverage_block
+        else None
+    )
+    if coverage_policy not in COVERAGE_POLICY_VERSIONS:
+        _vfail("coverage.policy_version无效。")
+    legacy_exactly_once = coverage_policy == COVERAGE_POLICY_VERSION_LEGACY
     chapters = content["chapters"]
     if not isinstance(chapters, list) or len(chapters) != chapter_count:
         _vfail("章数与章节计划不符。")
@@ -1998,13 +2068,22 @@ def validate_structured_document_content_v3(
             for unit_id in block["source_unit_ids"]:
                 if unit_id not in unit_by_id:
                     _vfail(f"章{ledger.chapter_id}块引用未知单元{unit_id}。")
-                if unit_id in flattened_units:
+                if legacy_exactly_once and unit_id in flattened_units:
                     _vfail(f"章{ledger.chapter_id}单元{unit_id}被重复覆盖。")
                 flattened_units.append(unit_id)
             if block["source_event_ids"] != _sorted_timeline_events(timeline_index, chapter_events_of(block, unit_by_id)):
                 _vfail(f"章{ledger.chapter_id}块source_event_ids与引用单元te并集（时间轴升序去重）不符。")
-        if flattened_units != unit_ids:
-            _vfail(f"章{ledger.chapter_id}单元覆盖必须恰一次且按账本顺序。")
+        if legacy_exactly_once:
+            if flattened_units != unit_ids:
+                _vfail(f"章{ledger.chapter_id}单元覆盖必须恰一次且按账本顺序。")
+        else:
+            # coverage策略2.0：每单元至少被一个块覆盖（可追溯不放宽），跨块
+            # 引用位置单调非降（时序不放宽）；同一单元跨多块＝合理复用。
+            unit_position = {unit_id: index for index, unit_id in enumerate(unit_ids)}
+            if set(flattened_units) != set(unit_ids):
+                _vfail(f"章{ledger.chapter_id}单元覆盖必须至少一次全覆盖。")
+            if not _references_monotonic(flattened_units, unit_position):
+                _vfail(f"章{ledger.chapter_id}单元引用必须按账本顺序单调非降。")
         frames = chapter["frames"]
         expected_frames = _project_frames(selection["chapters"][position])
         if frames != expected_frames:
@@ -2040,7 +2119,7 @@ def validate_structured_document_content_v3(
     coverage = content["coverage"]
     if not isinstance(coverage, dict) or set(coverage) != _COVERAGE_KEYS:
         _vfail("coverage字段集合无效。")
-    if coverage["policy_version"] != COVERAGE_POLICY_VERSION:
+    if coverage["policy_version"] not in COVERAGE_POLICY_VERSIONS:
         _vfail("coverage.policy_version无效。")
     coverage_chapters = coverage["chapters"]
     if not isinstance(coverage_chapters, list) or len(coverage_chapters) != chapter_count:
@@ -2083,8 +2162,20 @@ def validate_structured_document_content_v3(
     if generation["temperature"] != 0.0 or generation["enable_thinking"] is not False:
         _vfail("generation采样身份与冻结角色不符。")
     batch_skipped = chapter_count == 1
+    stored_prompts = generation["prompt_versions"]
+    expected_prompts = next(
+        (versions for versions in (PROMPT_VERSIONS, LEGACY_PROMPT_VERSIONS)
+         if stored_prompts == {
+             "single": versions[CALL_SINGLE],
+             "batch": None if batch_skipped else versions[CALL_BATCH],
+             "global": versions[CALL_GLOBAL],
+         }),
+        None,
+    )
+    if expected_prompts is None:
+        _vfail("generation.prompt_versions无效或混用版本。")
     for map_name, expected_map, allowed_null in (
-        ("prompt_versions", PROMPT_VERSIONS, True),
+        ("prompt_versions", expected_prompts, True),
         ("validator_versions", VALIDATION_IDS, True),
     ):
         value = generation[map_name]
@@ -2687,7 +2778,7 @@ def _validate_raw_responses_doc(
                 f"{ERROR_CACHE_CORRUPT}：raw-responses缓存命中条目的attempt_count必须为1。"
             )
         if (
-            entry["prompt_version"] != PROMPT_VERSIONS[slot]
+            entry["prompt_version"] != content["generation"]["prompt_versions"][slot]
             or entry["validation_id"] != VALIDATION_IDS[slot]
             or entry["max_tokens"] != expected_max_tokens[slot]
         ):
@@ -2726,6 +2817,10 @@ def _validate_raw_responses_doc(
         mode=str(content["generation"]["mode"]),
         backend=str(content["generation"]["backend"]),
         per_call_max_tokens=expected_max_tokens,
+        # 引用约束修复（2026-11-03）：重放按组内存储的coverage策略版本重装配，
+        # 1.0旧组逐字节复现（含content_id），新规则不改变旧组解释。
+        coverage_policy_version=str(content["coverage"]["policy_version"]),
+        prompt_versions=content["generation"]["prompt_versions"],
     )
     if canonical_json_bytes(recomputed) != canonical_json_bytes(content):
         raise ContentCacheCorruptError(

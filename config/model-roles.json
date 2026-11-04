@@ -69,11 +69,11 @@
       "output_contract": "StructuredDocumentContent/3.0",
       "prompt_bundle": {
         "versions": [
-          "document-content-single-unified-timeline-2.0",
-          "document-content-batch-unified-timeline-2.0",
+          "document-content-single-unified-timeline-2.1",
+          "document-content-batch-unified-timeline-2.1",
           "document-content-global-unified-timeline-2.0"
         ],
-        "content_sha256": "8fc35480c7bb0fe6282874f331de73765465faace8a37f46d8e473c77e74e6a2",
+        "content_sha256": "4d8fad0e7f949a79f06eb8c8a6bb60be360f1379c99829be328c395d23bad922",
         "fixture_hash_only": false
       },
       "response_format": {"type": "json_object"},

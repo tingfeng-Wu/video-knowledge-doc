@@ -4,9 +4,9 @@
 
 当前为命令行原型。已实现 ASR、抽帧、页面变化检测、可选 OCR、多模态时间轴、LLM 分章与文档导出；Web界面为下一交付重点，规则与PPO作为独立探索；这些能力目前尚未实现。长视频与部分模型输出仍会触发严格校验失败，失败会保留记录并停止，不生成伪成功文档。
 
-**团队成员先读[团队执行计划与任务入口](https://github.com/tingfeng-Wu/video-knowledge-doc/blob/main/docs/public/TEAM_PLAN.md)**：包含技术路线、0—30阶段、真实进度、中期前优先事项和可认领任务，无需先了解此前的开发讨论。2026-11-03已调整为2027年1月软件交付，详见[当前交付方案](https://github.com/tingfeng-Wu/video-knowledge-doc/blob/main/docs/public/DELIVERY_PLAN.md)；有限VLM增强尚未接入。
+**团队成员先读[团队执行计划与任务入口](https://github.com/tingfeng-Wu/video-knowledge-doc/blob/main/docs/public/TEAM_PLAN.md)**：包含技术路线、A0—A7阶段、真实进度、中期前优先事项和可认领任务，无需先了解此前的开发讨论。2026-11-03已调整为2027年1月软件交付，详见[当前交付方案](https://github.com/tingfeng-Wu/video-knowledge-doc/blob/main/docs/public/DELIVERY_PLAN.md)；有限VLM增强尚未接入。
 
-当前DEV01、COURSE01、LONG01已有真实图文文档并通过0 API缓存复跑；EXPLAINER01仍因重复引用校验失败而停止，M2尚未全部验收。
+2026-11-04：A0—A2已完成，下一阶段为A3第二台机器复现与中期演示准备。DEV01、COURSE01、LONG01已有真实图文成果；EXPLAINER01已修复引用约束并以5次供应商请求完成4章、12图的真实生成、导出和零请求缓存复验。机器正文仍会继承ASR错词，离线审校成果独立保存，不当作模型效果证据。详见[收口记录](https://github.com/tingfeng-Wu/video-knowledge-doc/blob/main/docs/public/CLOSEOUT_20261104.md)。
 
 ## Fork 后开始
 
@@ -51,7 +51,7 @@ python -m video_doc.cli run-m2 MY01 --ocr auto --bounded-content
 
 FFmpeg 未在 PATH 时，为命令加 `--ffmpeg-dir "D:\tools\ffmpeg\bin"`。任务ID使用字母、数字、连字符或下划线，源视频变更时使用新任务ID。
 
-`--allow-llm` 允许当前任务的真实付费请求。分章最多2次供应商请求；`--bounded-content` 正文按章节每6个连续单元分批，整次正文最多12次供应商请求，每个分批最多尝试2次。超过计划上限提前停止；达到请求上限立即停止。成功分批有独立缓存，失败原因存入任务目录。重复引用、遗漏和跨章引用仍会失败。未添加该参数时保留历史三调用路径。
+`--allow-llm` 允许当前任务的真实付费请求。分章最多2次供应商请求；`--bounded-content` 正文按章节每6个连续单元分批，整次正文最多12次供应商请求，每个分批最多尝试2次。超过计划上限提前停止；达到请求上限立即停止。成功分批有独立缓存，失败原因存入任务目录。允许同一来源单元在不同段落中合理复用；相同来源的相同正文重复、来源遗漏、引用倒序和跨章引用仍会失败。旧正式组按原coverage规则复验，新single/batch提示词2.1使用独立缓存身份。未添加该参数时保留历史三调用路径。
 
 `--dry-run` 不写入结果、不调用 API。新任务尚无时间轴时，后续输入量会显示不可测；它不保证随后生成成功。旧路径的运行计划对配置版本漂移存在已知限制；已发布正文的复用以执行时的来源复验为准。
 

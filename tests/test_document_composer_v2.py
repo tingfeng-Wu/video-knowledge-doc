@@ -47,7 +47,7 @@ TEMPLATE_PATH = REPO_ROOT / "config" / "model-roles.json"
 
 # 冻结角色哈希复核锚点（裁决Q6.3成文值；registry内已钉入）
 CONTENT_PROMPT_BUNDLE_SHA256 = (
-    "8fc35480c7bb0fe6282874f331de73765465faace8a37f46d8e473c77e74e6a2"
+    "4d8fad0e7f949a79f06eb8c8a6bb60be360f1379c99829be328c395d23bad922"
 )
 
 # HAPPY链账本：c0001=[te000001]"alpha"；c0002=[te000002,te000003]"beta gamma"（合并一单元）
@@ -381,11 +381,24 @@ def test_r_messages_deterministic_two_templates() -> None:
         ),
         (
             dc.CALL_SINGLE,
+            # 引用约束修复（2026-11-03）：UNIT_DUPLICATE_REFERENCE收窄为"同一单元
+            # 被≥2个文本完全相同的段落引用"的真重复内容；同单元多段不同文本属
+            # 合理复用（见test_r_normalize_legit_multi_reference_reuse）。
             {"paragraphs": [
-                {"source_unit_ids": ["c0001-u001"], "text": "一"},
-                {"source_unit_ids": ["c0001-u001"], "text": "重复"},
+                {"source_unit_ids": ["c0001-u001"], "text": "重复内容"},
+                {"source_unit_ids": ["c0001-u001"], "text": "重复内容"},
             ]},
             "UNIT_DUPLICATE_REFERENCE",
+        ),
+        (
+            dc.CALL_SINGLE,
+            # 同单元复用时引用位置回退（u001→u002→u001）＝时序破坏，仍拒绝。
+            {"paragraphs": [
+                {"source_unit_ids": ["c0001-u001"], "text": "先"},
+                {"source_unit_ids": ["c0001-u002"], "text": "后"},
+                {"source_unit_ids": ["c0001-u001"], "text": "回退复用"},
+            ]},
+            "UNIT_ORDER_VIOLATION",
         ),
         (
             dc.CALL_SINGLE,
@@ -453,6 +466,113 @@ def test_r_normalize_happy_paths() -> None:
         {"title": " 总标题 ", "overview": ["述"], "conclusions": ["结"]}
     )
     assert issues == [] and glob["title"] == "总标题"
+
+
+def test_r_normalize_legit_multi_reference_reuse() -> None:
+    # 引用约束修复（2026-11-03，交接DC-20261103-01）：同一来源单元被拆成多个
+    # 文本互不重复的自然段（EXPLAINER01 c0002实证形态）属合理复用，必须接受；
+    # 覆盖（每单元至少一次）与单调序约束不放宽。
+    timeline = _hand_timeline(
+        [
+            _hand_event(1, 0, "a" * 300),
+            _hand_event(2, 1000, "b" * 300),
+            _hand_event(3, 2000, "c" * 300),
+            _hand_event(4, 60_000, "d"),
+        ]
+    )
+    plan = _hand_plan([(0, "甲"), (50_000, "乙")], 100_000)
+    ledgers = dc._build_ledgers(timeline, plan)
+    assert [len(item.units) for item in ledgers] == [2, 1]
+    response = {
+        "paragraphs": [
+            {"source_unit_ids": ["c0001-u001"], "text": "第一段：环流被打破。"},
+            {"source_unit_ids": ["c0001-u001"], "text": "第二段：盐层形成。"},
+            {"source_unit_ids": ["c0001-u001", "c0001-u002"], "text": "第三段：跨单元过渡。"},
+            {"source_unit_ids": ["c0001-u002"], "text": "第四段：结尾。"},
+        ]
+    }
+    normalized, issues = dc.normalize_single_response(response, ledgers[0])
+    assert issues == [] and normalized is not None
+    assert [item["source_unit_ids"] for item in normalized["paragraphs"]] == [
+        ["c0001-u001"],
+        ["c0001-u001"],
+        ["c0001-u001", "c0001-u002"],
+        ["c0001-u002"],
+    ]
+    # 段内重复引用去重保序，不再是失败形态
+    deduped, issues2 = dc.normalize_single_response(
+        {
+            "paragraphs": [
+                {"source_unit_ids": ["c0001-u001", "c0001-u001"], "text": "段内重复引用。"},
+                {"source_unit_ids": ["c0001-u002"], "text": "第二段。"},
+            ]
+        },
+        ledgers[0],
+    )
+    assert issues2 == [] and deduped is not None
+    assert deduped["paragraphs"][0]["source_unit_ids"] == ["c0001-u001"]
+    # batch槽位逐章复用同一放宽语义
+    batch, issues3 = dc.normalize_batch_response(
+        {
+            "chapters": [
+                {
+                    "chapter_id": "c0001",
+                    "paragraphs": [
+                        {"source_unit_ids": ["c0001-u001"], "text": "甲段一。"},
+                        {"source_unit_ids": ["c0001-u001"], "text": "甲段二。"},
+                        {"source_unit_ids": ["c0001-u002"], "text": "甲段三。"},
+                    ],
+                },
+                {
+                    "chapter_id": "c0002",
+                    "paragraphs": [{"source_unit_ids": ["c0002-u001"], "text": "乙章。"}],
+                },
+            ]
+        },
+        ledgers,
+    )
+    assert issues3 == [] and batch is not None
+    assert len(batch["chapters"][0]["paragraphs"]) == 3
+
+
+def test_r_explainer01_failed_responses_now_normalize_offline() -> None:
+    # 真实失败证据离线重放（2026-11-02 failure-…-db21b2d8）：历史两次尝试的
+    # 原始响应在收窄后的引用约束下应判为合理复用并通过业务校验。
+    # 只读取证文件与上游current，零API、零写入outputs；证据文件本身不改写。
+    outputs = REPO_ROOT / "outputs"
+    evidence = (
+        outputs
+        / "EXPLAINER01"
+        / "m2"
+        / "failures"
+        / "document_composer_v2"
+        / "failure-20261102T135407979757Z-db21b2d8"
+        / dc.MODEL_RESPONSES_FILE
+    )
+    if not evidence.is_file():
+        pytest.skip("EXPLAINER01失败取证不在本工作区（私有outputs不随公开仓库分发）")
+    doc = json.loads(evidence.read_text(encoding="utf-8"))
+    assert doc["schema_name"] == dc.FAILED_DOC_SCHEMA_NAME
+    inputs = dc._load_content_inputs(outputs, "EXPLAINER01")
+    ledger = next(item for item in inputs.ledgers if item.chapter_id == "c0002")
+    assert len(ledger.units) == 3
+    checked = 0
+    for attempt in doc["attempts"]:
+        # 历史判定原样保留：当时按旧规则记为UNIT_DUPLICATE_REFERENCE
+        assert attempt["kind"] == "validation"
+        assert attempt["issues"][0]["code"] == "UNIT_DUPLICATE_REFERENCE"
+        parsed = json.loads(attempt["raw_response"])
+        normalized, issues = dc.normalize_single_response(parsed, ledger)
+        assert issues == [], f"attempt{attempt['attempt']}重放仍被拒绝：{issues}"
+        assert normalized is not None
+        paragraphs = normalized["paragraphs"]
+        assert len(paragraphs) == 7
+        referenced = [uid for item in paragraphs for uid in item["source_unit_ids"]]
+        assert set(referenced) == {"c0002-u001", "c0002-u002", "c0002-u003"}
+        texts = [" ".join(item["text"].split()) for item in paragraphs]
+        assert len(set(texts)) == len(texts), "合理复用要求各段文本互不相同"
+        checked += 1
+    assert checked == 2
 
 
 def test_r_merge_paragraphs_to_cap_pairwise() -> None:
@@ -597,6 +717,91 @@ def test_a_emergency_assembles_single_chapter(tmp_path: Path) -> None:
         selection=inputs.selection,
         expected_task_id=TASK,
     )
+
+
+def test_a_validator_coverage_policy_dispatch(tmp_path: Path) -> None:
+    # 版本边界（引用约束修复2026-11-03）：validator按coverage.policy_version分派——
+    # 2.0接受同单元跨块合理复用（覆盖去重计数）；同一正文改标1.0后按旧exactly-once
+    # 规则必须拒绝；未知policy版本拒绝。旧组解释不因新规则改变。
+    root = _chain_full(tmp_path)
+    inputs = _content_inputs(root)
+    reuse_single = dc.normalize_single_response(
+        {
+            "paragraphs": [
+                {"source_unit_ids": ["c0001-u001"], "text": "开场讲解第一段。"},
+                {"source_unit_ids": ["c0001-u001"], "text": "开场讲解第二段，同单元合理复用。"},
+            ]
+        },
+        inputs.ledgers[0],
+    )[0]
+    assert reuse_single is not None
+    batch = dc.normalize_slot_response(dc.CALL_BATCH, copy.deepcopy(BATCH_OK), inputs)[0]
+    glob = dc.normalize_slot_response(dc.CALL_GLOBAL, copy.deepcopy(GLOBAL_OK), inputs)[0]
+    content = dc.assemble_document_content(
+        inputs, reuse_single, batch, glob, mode=dc.MODE_MOCK, backend="mock"
+    )
+    assert content["coverage"]["policy_version"] == dc.COVERAGE_POLICY_VERSION
+    assert content["coverage"]["policy_version"] == "m2-unit-coverage-2.0"
+    assert [block["source_unit_ids"] for block in content["chapters"][0]["blocks"]] == [
+        ["c0001-u001"],
+        ["c0001-u001"],
+    ]
+    assert content["coverage"]["chapters"][0]["covered_unit_count"] == 1
+    assert content["coverage"]["chapters"][0]["unit_count"] == 1
+    assert content["coverage"]["totals"]["full_coverage"] is True
+    kwargs: dict[str, Any] = dict(
+        plan=inputs.plan,
+        timeline_index=inputs.timeline_index,
+        selection=inputs.selection,
+        expected_task_id=TASK,
+    )
+    dc.validate_structured_document_content_v3(content, **kwargs)
+    content["coverage"]["policy_version"] = dc.COVERAGE_POLICY_VERSION_LEGACY
+    with pytest.raises(dc.StructuredContentValidationError):
+        dc.validate_structured_document_content_v3(content, **kwargs)
+    content["coverage"]["policy_version"] = "m2-unit-coverage-9.9"
+    with pytest.raises(dc.StructuredContentValidationError):
+        dc.validate_structured_document_content_v3(content, **kwargs)
+
+
+def test_p_multi_reference_reuse_publishes_and_replays(tmp_path: Path) -> None:
+    # 端到端：合理复用响应可发布为coverage-2.0正式组；组复验（validator分派＋
+    # raw逐条重放逐字节）通过；缓存复跑0供应商请求、不重复发布、整树字节不变。
+    root = _chain_full(tmp_path)
+    reuse_single = {
+        "paragraphs": [
+            {"source_unit_ids": ["c0001-u001"], "text": "开场讲解第一段。"},
+            {"source_unit_ids": ["c0001-u001"], "text": "开场讲解第二段，同单元合理复用。"},
+        ]
+    }
+    responses = [reuse_single, copy.deepcopy(BATCH_OK), copy.deepcopy(GLOBAL_OK)]
+    result = _compose(root, ScriptedTransport(responses), tmp_path=tmp_path)
+    assert result.content["coverage"]["policy_version"] == "m2-unit-coverage-2.0"
+    assert [block["source_unit_ids"] for block in result.content["chapters"][0]["blocks"]] == [
+        ["c0001-u001"],
+        ["c0001-u001"],
+    ]
+    inputs = _content_inputs(root)
+    dc.validate_document_content_group(
+        result.group_path,
+        cache_sha256=str(_read_json(result.group_path / dc.MANIFEST_FILE)["cache_identity_sha256"]),
+        plan=inputs.plan,
+        timeline_index=inputs.timeline_index,
+        selection=inputs.selection,
+        expected_result_id=result.result_id,
+    )
+    before = _tree_sha_pairs(_own_root(root))
+    # 空脚本传输：任何真实供应商调用都会使其耗尽报错——成功返回即0次新调用。
+    # 缓存命中早退路径按实现决定17复用既有report计数（历史supplier=3如实呈现）。
+    again = _compose(root, ScriptedTransport([]), tmp_path=tmp_path)
+    assert again.cache_hit and again.result_id == result.result_id
+    assert (again.business_call_count, again.supplier_request_count) == (
+        result.business_call_count,
+        result.supplier_request_count,
+    )
+    assert _tree_sha_pairs(_own_root(root)) == before
+    report = _read_json(again.group_path / dc.REPORT_FILE)
+    assert report["versions"]["coverage_policy_version"] == "m2-unit-coverage-2.0"
 
 
 # ---------------------------------------------------------------------------
@@ -1921,3 +2126,33 @@ def test_n7_compose_approval_stop_writes_no_failure_group(tmp_path: Path) -> Non
     formal = own / "formal-results"
     assert not formal.exists() or list(formal.iterdir()) == []
     assert not (own / dc.CURRENT_FILE).exists()
+
+
+def test_prompt_revision_replays_legacy_and_isolates_new_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _chain_full(tmp_path)
+    result = _compose(root, _ContentTransport(_responses()), tmp_path=tmp_path)
+    inputs = _content_inputs(root)
+    current_hash = dc._content_cache_identity(inputs, "a" * 64)[1]
+    with monkeypatch.context() as patch:
+        patch.setattr(dc, "PROMPT_VERSIONS", dc.LEGACY_PROMPT_VERSIONS)
+        legacy_hash = dc._content_cache_identity(inputs, "a" * 64)[1]
+    assert current_hash != legacy_hash
+    assert "至少出现一次" in dc._system_prompt(dc.CALL_SINGLE)
+    assert "恰好出现一次" not in dc._system_prompt(dc.CALL_BATCH)
+    legacy = copy.deepcopy(result.content)
+    legacy["generation"]["prompt_versions"] = dict(dc.LEGACY_PROMPT_VERSIONS)
+    legacy["content_id"] = dc._compute_content_id(legacy)
+    raw = _read_json(result.group_path / dc.RAW_RESPONSES_FILE)
+    for entry in raw["calls"]:
+        entry["prompt_version"] = dc.LEGACY_PROMPT_VERSIONS[entry["call_slot"]]
+    dc.validate_structured_document_content_v3(legacy, plan=inputs.plan,
+        timeline_index=inputs.timeline_index, selection=inputs.selection)
+    dc._validate_raw_responses_doc(raw, content=legacy, inputs=inputs)
+    mixed = copy.deepcopy(legacy)
+    mixed["generation"]["prompt_versions"][dc.CALL_SINGLE] = dc.PROMPT_VERSIONS[dc.CALL_SINGLE]
+    with pytest.raises(dc.StructuredContentValidationError, match="混用版本"):
+        dc.validate_structured_document_content_v3(mixed, plan=inputs.plan,
+            timeline_index=inputs.timeline_index, selection=inputs.selection)
+    raw["calls"][0]["prompt_version"] = dc.PROMPT_VERSIONS[dc.CALL_SINGLE]
+    with pytest.raises(dc.ContentCacheCorruptError, match="冻结版本"):
+        dc._validate_raw_responses_doc(raw, content=legacy, inputs=inputs)
