@@ -193,6 +193,56 @@ def test_openai_compatible_transport_sends_timeout_and_parses_content(
     assert sent["max_tokens"] == 1800
 
 
+def test_anonymous_public_transport_omits_unsupported_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakeResponse:
+        def __enter__(self) -> "FakeResponse":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {
+                    "choices": [
+                        {"message": {"content": '```json\n{"ok": true}\n```'}}
+                    ]
+                }
+            ).encode("utf-8")
+
+    def fake_urlopen(request: object, *, timeout: float) -> FakeResponse:
+        captured["request"] = request
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(llm_adapter.urllib.request, "urlopen", fake_urlopen)
+    config = _mock_config(
+        backend="openai_compatible",
+        base_url="https://text.pollinations.ai/openai",
+        model="openai",
+        api_key="anonymous",
+        enable_thinking=False,
+        max_tokens=1800,
+    )
+    result = OpenAICompatibleTransport().complete(
+        config,
+        MESSAGES,
+        {"type": "json_object"},
+    )
+
+    request = captured["request"]
+    sent = json.loads(request.data.decode("utf-8"))
+    assert request.get_header("Authorization") is None
+    assert "response_format" not in sent
+    assert "enable_thinking" not in sent
+    assert "max_tokens" not in sent
+    assert llm_adapter._structured_response(result) == {"ok": True}
+
+
 def test_max_attempts_one_never_retries_validation_failure(tmp_path: Path) -> None:
     output_root = _prepare_task(tmp_path)
     transport = SequenceTransport({"value": -1}, {"value": 2})

@@ -1241,8 +1241,9 @@ def _execute_run(
         else:
             try:
                 measurement = measure_boundary_egress(
-                    output, task_id, model_registry=model_registry,
-                    **({"bounded": True} if bounded_content else {}),
+                    output,
+                    task_id,
+                    model_registry=model_registry,
                 )
             except BoundaryPlannerV2Error as exc:
                 # 实现决定6：域输入缺失/损坏保留原码包裹（P4硬失败语义）。

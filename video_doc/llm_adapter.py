@@ -9,12 +9,14 @@ import os
 import re
 import socket
 import time
+import threading
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
+from urllib.parse import urlsplit
 
 from video_doc.task_workspace import (
     TaskWorkspaceError,
@@ -35,6 +37,9 @@ DEFAULT_MOCK_RESPONSE: dict[str, Any] = {
 SUPPORTED_BACKENDS = ("mock", "openai_compatible")
 _CALL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 _MESSAGE_ROLES = {"system", "user", "assistant"}
+_PUBLIC_ENDPOINT_LOCK = threading.Lock()
+_PUBLIC_ENDPOINT_LAST_REQUEST = 0.0
+_PUBLIC_ENDPOINT_MIN_INTERVAL_SECONDS = 31.0
 
 
 class LLMAdapterError(RuntimeError):
@@ -309,48 +314,112 @@ class OpenAICompatibleTransport:
         messages: Sequence[Mapping[str, str]],
         response_format: Mapping[str, Any],
     ) -> Any:
+        anonymous_endpoint = (
+            urlsplit(config.base_url).hostname == "text.pollinations.ai"
+        )
+        global _PUBLIC_ENDPOINT_LAST_REQUEST
+        if anonymous_endpoint:
+            with _PUBLIC_ENDPOINT_LOCK:
+                wait_seconds = _PUBLIC_ENDPOINT_MIN_INTERVAL_SECONDS - (
+                    time.monotonic() - _PUBLIC_ENDPOINT_LAST_REQUEST
+                )
+                if wait_seconds > 0:
+                    time.sleep(wait_seconds)
+                _PUBLIC_ENDPOINT_LAST_REQUEST = time.monotonic()
         request_payload: dict[str, Any] = {
             "model": config.model,
             "messages": list(messages),
-            "response_format": dict(response_format),
             "temperature": config.temperature,
         }
-        if config.enable_thinking is not None:
-            request_payload["enable_thinking"] = config.enable_thinking
-        if config.max_tokens is not None:
-            request_payload["max_tokens"] = config.max_tokens
+        if anonymous_endpoint:
+            request_payload["reasoning_effort"] = "low"
+            system_text = "\n".join(
+                str(message.get("content", ""))
+                for message in messages
+                if message.get("role") == "system"
+            )
+            if "source_unit_ids" in system_text and "paragraphs" in system_text:
+                compact_instruction = (
+                    "\n\n匿名端点输出长度有限。请用简洁总结代替逐句转写；"
+                    "每段不超过180个汉字，每批最多2段，仍须覆盖全部"
+                    "source_unit_ids并保持给定JSON结构。"
+                )
+                for message in request_payload["messages"]:
+                    if message.get("role") == "system":
+                        message["content"] = str(message["content"]) + compact_instruction
+                        break
+        if not anonymous_endpoint:
+            request_payload["response_format"] = dict(response_format)
+            if config.enable_thinking is not None:
+                request_payload["enable_thinking"] = config.enable_thinking
+            if config.max_tokens is not None:
+                request_payload["max_tokens"] = config.max_tokens
         body = json.dumps(
             request_payload,
             ensure_ascii=False,
         ).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if not anonymous_endpoint:
+            headers["Authorization"] = f"Bearer {config.api_key}"
         request = urllib.request.Request(
             config.base_url,
             data=body,
-            headers={
-                "Authorization": f"Bearer {config.api_key}",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(
-                request, timeout=config.timeout_seconds
-            ) as response:
-                raw_payload = response.read().decode("utf-8")
-        except urllib.error.HTTPError as exc:
-            if exc.code in {408, 409, 429} or exc.code >= 500:
-                raise LLMRetryableError(f"LLM服务暂时不可用（HTTP {exc.code}）。") from exc
-            raise LLMNonRetryableError(f"LLM请求被拒绝（HTTP {exc.code}）。") from exc
-        except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
-            raise LLMRetryableError("LLM网络请求失败或超时。") from exc
-        except OSError as exc:
-            raise LLMRetryableError("LLM网络请求失败。") from exc
+        raw_payload = ""
+        for request_attempt in range(2):
+            try:
+                with urllib.request.urlopen(
+                    request, timeout=config.timeout_seconds
+                ) as response:
+                    raw_payload = response.read().decode("utf-8")
+                break
+            except urllib.error.HTTPError as exc:
+                error_detail = _http_error_detail(exc)
+                if (
+                    anonymous_endpoint
+                    and exc.code == 402
+                    and request_attempt == 0
+                ):
+                    retry_after = _public_retry_after_seconds(exc.headers)
+                    time.sleep(retry_after)
+                    continue
+                if exc.code in {408, 409, 429} or exc.code >= 500:
+                    raise LLMRetryableError(
+                        f"LLM服务暂时不可用（HTTP {exc.code}）：{error_detail}"
+                    ) from exc
+                raise LLMNonRetryableError(
+                    f"LLM请求被拒绝（HTTP {exc.code}）：{error_detail}"
+                ) from exc
+            except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
+                raise LLMRetryableError("LLM网络请求失败或超时。") from exc
+            except OSError as exc:
+                raise LLMRetryableError("LLM网络请求失败。") from exc
 
         try:
             payload = json.loads(raw_payload)
             return payload["choices"][0]["message"]["content"]
         except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
             raise LLMRetryableError("LLM服务响应格式无效。") from exc
+
+
+def _public_retry_after_seconds(headers: Any) -> float:
+    value = headers.get("Retry-After", "") if headers is not None else ""
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        seconds = _PUBLIC_ENDPOINT_MIN_INTERVAL_SECONDS
+    return min(45.0, max(1.0, seconds))
+
+
+def _http_error_detail(error: urllib.error.HTTPError) -> str:
+    try:
+        payload = error.read()
+        text = payload.decode("utf-8", errors="replace").strip()
+    except (OSError, ValueError, AttributeError):
+        return "无错误详情"
+    return " ".join(text.split())[:300] or "无错误详情"
 
 
 def _default_transport(config: LLMConfig) -> LLMTransport:
@@ -364,10 +433,25 @@ def _structured_response(raw: Any) -> dict[str, Any]:
         return raw
     if not isinstance(raw, str) or not raw.strip():
         raise LLMRetryableError("LLM未返回非空的结构化JSON对象。")
+    text = raw.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
     try:
-        payload = json.loads(raw)
+        payload = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise LLMRetryableError("LLM返回内容不是合法JSON。") from exc
+        start = text.find("{")
+        end = text.rfind("}")
+        if start < 0 or end <= start:
+            raise LLMRetryableError("LLM返回内容不是合法JSON。") from exc
+        try:
+            payload = json.loads(text[start : end + 1])
+        except json.JSONDecodeError as nested:
+            raise LLMRetryableError("LLM返回内容不是合法JSON。") from nested
     if not isinstance(payload, dict):
         raise LLMRetryableError("LLM返回JSON顶层不是对象。")
     return payload

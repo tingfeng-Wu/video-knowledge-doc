@@ -24,9 +24,13 @@ dev = [
 
 [project.scripts]
 video-doc = "video_doc.cli:main"
+video-doc-web = "video_doc.web_server:main"
 
 [tool.setuptools.packages.find]
 include = ["video_doc*"]
+
+[tool.setuptools.package-data]
+video_doc = ["webui/*.html", "webui/*.css", "webui/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

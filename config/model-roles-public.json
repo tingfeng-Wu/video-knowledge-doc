@@ -1,0 +1,91 @@
+{
+  "schema_name": "ModelRoleRegistry",
+  "schema_version": "1.0",
+  "registry_id": "model-role-registry-public-anonymous",
+  "fixture_only": false,
+  "identity_algorithm": "sha256(canonical_json(role_without_role_cache_identity_sha256))",
+  "connection_profiles": {
+    "pollinations_anonymous": {
+      "backend": "openai_compatible",
+      "base_url": "https://text.pollinations.ai/openai",
+      "api_key_env": "VIDEO_DOC_PUBLIC_LLM_KEY"
+    }
+  },
+  "engine_roles": {},
+  "llm_roles": {
+    "boundary_model": {
+      "role_config_version": "boundary-model-role-1.0",
+      "enabled": true,
+      "connection_profile": "pollinations_anonymous",
+      "resolved_provider": {
+        "backend": "openai_compatible",
+        "base_url": "https://text.pollinations.ai/openai"
+      },
+      "model": "openai",
+      "model_revision": null,
+      "revision_policy": "provider_model_name",
+      "generation": {
+        "temperature": 0.0,
+        "enable_thinking": false,
+        "max_tokens": null,
+        "timeout_seconds": 60.0
+      },
+      "input_contract": "UnifiedTimeline/2.0",
+      "output_contract": "ChapterPlan/2.0",
+      "prompt_bundle": {
+        "versions": ["chapter-boundary-unified-timeline-2.0"],
+        "content_sha256": "24c28209507f2efdd9d5c74d143613a1173f1821da2682cac6965ea1d814645e",
+        "fixture_hash_only": false
+      },
+      "response_format": {"type": "json_object"},
+      "validation_id": "chapter-plan-validator-2-0",
+      "validation_retry_policy": "validation-feedback-1.0",
+      "cache_namespace": "boundary-model-unified-timeline-2-0",
+      "max_attempts_per_business_call": 2,
+      "alternate_model_fallback": "none",
+      "runtime_budget": {
+        "business_call_hard_limit": 1,
+        "supplier_request_hard_limit": 2
+      }
+    },
+    "content_model": {
+      "role_config_version": "content-model-role-2.0",
+      "enabled": true,
+      "connection_profile": "pollinations_anonymous",
+      "resolved_provider": {
+        "backend": "openai_compatible",
+        "base_url": "https://text.pollinations.ai/openai"
+      },
+      "model": "openai",
+      "model_revision": null,
+      "revision_policy": "provider_model_name",
+      "generation": {
+        "temperature": 0.0,
+        "enable_thinking": false,
+        "max_tokens": null,
+        "timeout_seconds": 60.0
+      },
+      "input_contract": "M2ContentCompositionInput/1.0",
+      "output_contract": "StructuredDocumentContent/3.0",
+      "prompt_bundle": {
+        "versions": [
+          "document-content-single-unified-timeline-2.1",
+          "document-content-batch-unified-timeline-2.1",
+          "document-content-global-unified-timeline-2.0"
+        ],
+        "content_sha256": "4d8fad0e7f949a79f06eb8c8a6bb60be360f1379c99829be328c395d23bad922",
+        "fixture_hash_only": false
+      },
+      "response_format": {"type": "json_object"},
+      "validation_id": "document-content-validator-suite-2-0",
+      "validation_retry_policy": "validation-feedback-1.0",
+      "cache_namespace": "content-model-unified-timeline-2-0",
+      "max_attempts_per_business_call": 2,
+      "alternate_model_fallback": "none",
+      "runtime_budget": {
+        "business_call_hard_limit": 3,
+        "supplier_request_hard_limit": 6
+      }
+    }
+  }
+}

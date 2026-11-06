@@ -244,6 +244,21 @@ def sandbox(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def test_e2e_bounded_content_keeps_boundary_budget_measurable(sandbox):
+    _boundary_t, _content_t, transports = sandbox.fresh_transports()
+    summary = sandbox.run(
+        source_video=sandbox.source,
+        allow_llm=True,
+        bounded_content=True,
+        _transports=transports,
+    )
+    assert summary.task_id == TASK
+    assert not any(
+        status == "failed" and stage == "chapter_plan_v2"
+        for stage, status, _payload in sandbox.progress
+    )
+
+
 def test_e2e_first_run_full_chain_summary_progress_and_jsonl(sandbox):
     boundary_t, content_t, transports = sandbox.fresh_transports()
     summary = sandbox.run(
