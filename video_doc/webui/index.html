@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>知构 · 视频文档工作台</title>
+  <link rel="stylesheet" href="/assets/styles.css?v=20261106-1">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#dashboard" data-nav="dashboard" aria-label="返回工作台">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M8 6.5h11.2L25.5 13v12.5H8z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+            <path d="M19 6.5V13h6.3M12.5 18h8M12.5 22h5.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span>
+          <strong>知构</strong>
+          <small>Video to Document</small>
+        </span>
+      </a>
+
+      <nav class="primary-nav" aria-label="主导航">
+        <button class="nav-item active" type="button" data-view="dashboard">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/>
+            <rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/>
+          </svg>
+          <span>工作台</span>
+        </button>
+        <button class="nav-item" type="button" data-view="tasks">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M8 6h12M8 12h12M8 18h12" stroke-linecap="round"/>
+            <circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>
+          </svg>
+          <span>任务中心</span>
+          <span class="nav-count" id="activeTaskCount">0</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-note">
+        <span class="eyebrow">处理链路</span>
+        <p>视频 → 转写 / 画面 → 章节 → 图文讲义</p>
+        <div class="chain-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      </div>
+
+      <div class="sidebar-footer">
+        <button class="system-state" type="button" id="systemState" title="查看运行环境">
+          <span class="state-dot"></span>
+          <span>
+            <strong>本机运行</strong>
+            <small id="systemStateText">正在检查环境</small>
+          </span>
+        </button>
+        <button class="sidebar-help" type="button" id="helpButton">使用说明</button>
+      </div>
+    </aside>
+
+    <div class="main-shell">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="icon-button mobile-menu" type="button" id="mobileMenu" aria-label="打开菜单">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/></svg>
+          </button>
+          <div class="breadcrumb" id="breadcrumb">
+            <span>工作台</span>
+            <svg viewBox="0 0 16 16" fill="none"><path d="m6 3 5 5-5 5"/></svg>
+            <strong>概览</strong>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="global-search">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 4.5 4.5" stroke-linecap="round"/></svg>
+            <input id="globalSearch" type="search" placeholder="搜索任务或标题" autocomplete="off">
+            <kbd>⌘ K</kbd>
+          </div>
+          <button class="button button-primary" type="button" id="topCreateButton">
+            <svg viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke-linecap="round"/></svg>
+            新建任务
+          </button>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <section class="view active" id="dashboardView" aria-labelledby="dashboardTitle">
+          <div class="dashboard-hero">
+            <div class="hero-copy">
+              <span class="eyebrow light">KNOWLEDGE VIDEO STUDIO</span>
+              <h1 id="dashboardTitle">把一节课，整理成一份<br>可以反复阅读的讲义。</h1>
+              <p>导入教学、演讲或科普视频，系统会提取语音与画面，生成有章节、配图和来源时间的结构化文档。</p>
+              <div class="hero-actions">
+                <button class="button button-light" type="button" data-open-create>
+                  <svg viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke-linecap="round"/></svg>
+                  导入视频
+                </button>
+                <button class="button button-ghost-light" type="button" data-view="tasks">查看全部任务</button>
+              </div>
+            </div>
+            <div class="hero-visual" aria-hidden="true">
+              <div class="video-tile">
+                <span class="play-triangle"></span>
+                <div class="video-lines"><i></i><i></i><i></i></div>
+                <span class="video-time">12:48</span>
+              </div>
+              <div class="flow-line"><span></span><span></span><span></span></div>
+              <div class="doc-tile">
+                <div class="doc-title-line"></div>
+                <div class="doc-chapter"><b>01</b><span></span></div>
+                <div class="doc-copy"><i></i><i></i><i></i></div>
+                <div class="doc-image"></div>
+                <div class="doc-chapter small"><b>02</b><span></span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="metric-grid" id="metricGrid">
+            <article class="metric-card">
+              <span class="metric-icon blue"><svg viewBox="0 0 24 24" fill="none"><path d="M7 3.5h7l4 4v13H7z"/><path d="M14 3.5v4h4M10 12h5M10 16h4"/></svg></span>
+              <div><small>全部任务</small><strong id="metricTotal">—</strong><span>本机任务</span></div>
+            </article>
+            <article class="metric-card">
+              <span class="metric-icon amber"><svg viewBox="0 0 24 24" fill="none"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="8.5"/></svg></span>
+              <div><small>正在处理</small><strong id="metricActive">—</strong><span>实时查看进度</span></div>
+            </article>
+            <article class="metric-card">
+              <span class="metric-icon green"><svg viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6"/><circle cx="12" cy="12" r="9"/></svg></span>
+              <div><small>已完成</small><strong id="metricCompleted">—</strong><span>可阅读与下载</span></div>
+            </article>
+            <article class="metric-card">
+              <span class="metric-icon rose"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 17h.01"/><path d="M10.3 4.5 3.2 17a2 2 0 0 0 1.7 3h14.2a2 2 0 0 0 1.7-3L13.7 4.5a2 2 0 0 0-3.4 0Z"/></svg></span>
+              <div><small>需要处理</small><strong id="metricAttention">—</strong><span>失败或已取消</span></div>
+            </article>
+          </div>
+
+          <div class="dashboard-grid">
+            <section class="panel recent-panel">
+              <div class="panel-heading">
+                <div><span class="eyebrow">RECENT TASKS</span><h2>最近任务</h2></div>
+                <button class="text-button" type="button" data-view="tasks">查看全部 <span>→</span></button>
+              </div>
+              <div class="recent-list" id="recentTaskList">
+                <div class="skeleton-list" aria-label="正在加载任务">
+                  <div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div>
+                </div>
+              </div>
+            </section>
+
+            <aside class="dashboard-side">
+              <section class="panel guide-panel">
+                <div class="panel-heading compact">
+                  <div><span class="eyebrow">WORKFLOW</span><h2>三步生成讲义</h2></div>
+                  <span class="step-badge">01—03</span>
+                </div>
+                <ol class="guide-steps">
+                  <li><span>1</span><div><strong>导入知识视频</strong><small>支持 MP4、MOV、MKV 等常见格式</small></div></li>
+                  <li><span>2</span><div><strong>确认生成选项</strong><small>本机缓存优先，模型调用需授权</small></div></li>
+                  <li><span>3</span><div><strong>阅读、编辑与导出</strong><small>机器原稿与编辑版本独立保存</small></div></li>
+                </ol>
+              </section>
+              <section class="panel environment-panel">
+                <div class="environment-title">
+                  <span class="pulse-ring"></span>
+                  <div><strong>本机处理环境</strong><small id="environmentSummary">正在检查 FFmpeg 与输出目录</small></div>
+                </div>
+                <div class="environment-tags" id="environmentTags"></div>
+              </section>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" id="tasksView" aria-labelledby="tasksTitle">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">TASK CENTER</span>
+              <h1 id="tasksTitle">任务中心</h1>
+              <p>统一查看处理进度、失败原因和历史文档。</p>
+            </div>
+            <button class="button button-primary" type="button" data-open-create>新建任务</button>
+          </div>
+          <div class="task-toolbar">
+            <div class="filter-tabs" id="taskFilters" role="tablist" aria-label="任务状态筛选">
+              <button class="filter-tab active" type="button" data-filter="all">全部 <span id="allTaskCount">0</span></button>
+              <button class="filter-tab" type="button" data-filter="active">处理中 <span id="activeFilterCount">0</span></button>
+              <button class="filter-tab" type="button" data-filter="completed">已完成</button>
+              <button class="filter-tab" type="button" data-filter="failed">需处理</button>
+              <button class="filter-tab" type="button" data-filter="ready">待开始</button>
+            </div>
+            <div class="toolbar-right">
+              <label class="archive-switch"><input type="checkbox" id="showArchived"><span></span>显示归档</label>
+              <label class="inline-search">
+                <svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 4.5 4.5" stroke-linecap="round"/></svg>
+                <input type="search" id="taskSearch" placeholder="搜索任务">
+              </label>
+            </div>
+          </div>
+          <div class="task-table-wrap">
+            <div class="task-table-head">
+              <span>任务</span><span>状态</span><span>视频信息</span><span>最近更新</span><span></span>
+            </div>
+            <div class="task-table" id="taskTable">
+              <div class="skeleton-list large">
+                <div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view workspace-view" id="workspaceView" aria-labelledby="workspaceTitle">
+          <div class="workspace-loading" id="workspaceLoading">
+            <span class="loading-ring large"></span>
+            <strong>正在打开任务</strong>
+            <small>检查任务状态与文档内容</small>
+          </div>
+          <div id="workspaceContent" hidden></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <dialog class="modal create-modal" id="createDialog">
+    <form method="dialog" class="modal-card" id="createForm">
+      <div class="modal-heading">
+        <div>
+          <span class="eyebrow">NEW TASK</span>
+          <h2>导入视频，创建任务</h2>
+          <p>先选择视频来源，再确认本次处理选项。</p>
+        </div>
+        <button class="icon-button dialog-close" type="button" data-close-dialog="createDialog" aria-label="关闭">
+          <svg viewBox="0 0 24 24" fill="none"><path d="m6 6 12 12M18 6 6 18" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <div class="source-tabs" role="tablist">
+        <button class="source-tab active" type="button" data-source-tab="upload">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 16v4h14v-4"/></svg>
+          上传视频
+        </button>
+        <button class="source-tab" type="button" data-source-tab="path">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M3.5 7.5h6l2-2h9v13H3.5z"/></svg>
+          本机路径
+        </button>
+      </div>
+
+      <div class="source-panel active" id="uploadSourcePanel">
+        <label class="drop-zone" id="dropZone">
+          <input type="file" id="videoFile" accept=".mp4,.mkv,.mov,.avi,.webm,.m4v,video/*">
+          <span class="upload-symbol">
+            <svg viewBox="0 0 32 32" fill="none"><path d="M16 22V8m0 0-6 6m6-6 6 6M7 23v4h18v-4"/></svg>
+          </span>
+          <strong>拖入视频，或点击选择文件</strong>
+          <small>支持 MP4 / MKV / MOV / AVI / WEBM / M4V</small>
+          <span class="selected-file" id="selectedFile" hidden></span>
+        </label>
+      </div>
+
+      <div class="source-panel" id="pathSourcePanel">
+        <label class="field">
+          <span>本机视频路径</span>
+          <div class="input-with-icon">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M3.5 7.5h6l2-2h9v13H3.5z"/></svg>
+            <input type="text" id="sourcePath" placeholder="例如 D:\videos\lesson.mp4" autocomplete="off">
+          </div>
+          <small>适用于视频已经在当前电脑上的情况，不需要复制文件。</small>
+        </label>
+      </div>
+
+      <div class="form-grid">
+        <label class="field">
+          <span>文档名称</span>
+          <input type="text" id="displayName" maxlength="120" placeholder="默认使用视频文件名">
+        </label>
+        <label class="field">
+          <span>任务 ID <em>可选</em></span>
+          <input type="text" id="taskId" maxlength="64" placeholder="自动生成，也可填写 COURSE01">
+        </label>
+      </div>
+
+      <details class="advanced-options">
+        <summary>
+          <span><strong>生成选项</strong><small>OCR、长视频分批和模型调用授权</small></span>
+          <svg viewBox="0 0 16 16" fill="none"><path d="m3 6 5 5 5-5"/></svg>
+        </summary>
+        <div class="advanced-body">
+          <label class="field">
+            <span>画面文字识别</span>
+            <select id="ocrMode">
+              <option value="auto">自动识别（推荐）</option>
+              <option value="off">跳过 OCR</option>
+              <option value="required">必须完成 OCR</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>FFmpeg 目录 <em>可选</em></span>
+            <input type="text" id="ffmpegDir" placeholder="默认从 PATH 查找">
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="boundedContent" checked>
+            <span class="check-box"></span>
+            <span><strong>长视频分批生成</strong><small>按章分批复用结果，控制正文请求次数。</small></span>
+          </label>
+          <label class="check-row warning-row">
+            <input type="checkbox" id="allowLlm">
+            <span class="check-box"></span>
+            <span><strong>允许本次调用百炼模型</strong><small>需要配置 API Key；生成时会向已配置的百炼模型发送所需文本。</small></span>
+          </label>
+        </div>
+      </details>
+
+      <div class="modal-footer">
+        <label class="start-after-create"><input type="checkbox" id="startAfterCreate" checked><span>创建后立即开始</span></label>
+        <div>
+          <button class="button button-secondary" type="button" data-close-dialog="createDialog">取消</button>
+          <button class="button button-primary" type="submit" id="createSubmit">创建任务</button>
+        </div>
+      </div>
+      <div class="upload-progress" id="uploadProgress" hidden>
+        <span style="width:0%"></span>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="modal help-modal" id="helpDialog">
+    <div class="modal-card">
+      <div class="modal-heading">
+        <div><span class="eyebrow">QUICK GUIDE</span><h2>使用说明</h2></div>
+        <button class="icon-button dialog-close" type="button" data-close-dialog="helpDialog" aria-label="关闭">
+          <svg viewBox="0 0 24 24" fill="none"><path d="m6 6 12 12M18 6 6 18" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="help-content">
+        <div><b>1</b><p><strong>任务与缓存</strong>重复运行同一任务会优先复用已有阶段结果。若提示“需要授权模型调用”，在生成选项中勾选授权后重试。</p></div>
+        <div><b>2</b><p><strong>机器版与编辑版</strong>机器原稿始终只读保留。每次保存编辑都会创建独立版本，导出时跟随所选版本。</p></div>
+        <div><b>3</b><p><strong>视频与依赖</strong>真实视频处理需要 FFmpeg/FFprobe。首次语音识别和 OCR 可能下载模型，耗时取决于本机环境。</p></div>
+        <div><b>4</b><p><strong>任务停止</strong>取消会终止当前生成进程，已发布的上游缓存仍会保留，随后可重新运行并继续复用。</p></div>
+      </div>
+      <div class="modal-footer"><span></span><button class="button button-primary" type="button" data-close-dialog="helpDialog">知道了</button></div>
+    </div>
+  </dialog>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+  <script src="/assets/app.js?v=20261106-anonymous-model" defer></script>
+</body>
+</html>

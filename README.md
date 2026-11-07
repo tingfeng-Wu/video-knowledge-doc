@@ -25,6 +25,18 @@ python -m video_doc.cli --help
 
 也可以使用Conda环境。真实视频处理需要FFmpeg和FFprobe；通过`--ffmpeg-dir`可指定FFmpeg目录。ASR和OCR模型会在首次使用时下载。
 
+### 启动本机工作区
+
+安装项目依赖后，在仓库根目录启动完整界面：
+
+```powershell
+python -m video_doc.web_server --open
+```
+
+默认访问地址为`http://127.0.0.1:8765/`，任务文件保存在`outputs/`。界面支持视频上传或本机路径导入、任务创建与阶段进度、运行取消与重试、图文预览、章节编辑、删图、独立编辑版本保存，以及机器版/编辑版的JSON、Markdown和Word下载。
+
+Web工作区沿用百炼配置。模型调用默认关闭，每次生成须明确授权。已有阶段缓存会优先复用。接口和存储设计见[Web工作区说明](docs/public/WEB_APP.md)。
+
 ### 运行合成示例
 
 ```powershell
@@ -87,6 +99,7 @@ manifest.json   文件与版本记录
 | `config/` | 模型角色配置 |
 | `tools/` | 示例和开发工具 |
 | `docs/` | 项目文档与数据示例 |
+| `video_doc/webui/` | 无需构建的本机Web界面 |
 | `samples/development/` | 随仓库分发的真实开发样例包 |
 | `data/tmp/`、`outputs/` | 本地运行数据与产物 |
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -185,7 +186,9 @@ def _default_model_factory(model: str, device: str, compute_type: str) -> Any:
             "未安装faster-whisper，请先安装项目运行依赖。"
         ) from exc
     try:
-        return WhisperModel(model, device=device, compute_type=compute_type)
+        local_model_path = os.environ.get("VIDEO_DOC_ASR_MODEL_PATH", "").strip()
+        model_source = local_model_path or model
+        return WhisperModel(model_source, device=device, compute_type=compute_type)
     except Exception as exc:
         raise ASRTranscriptionError(f"无法加载ASR模型{model!r}：{exc}") from exc
 

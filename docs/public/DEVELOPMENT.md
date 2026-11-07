@@ -16,8 +16,10 @@
 | 生成现有机器正文的导出包 | `document_exporter_v2.export_document_v2` | `tests/test_document_exporter_v2.py` |
 | 渲染Markdown或Word | `document_exporter_v2.render_export_markdown`、`render_export_docx` | 同上 |
 | 了解模型和调用身份 | `video_doc/model_roles.py`、`config/model-roles.json` | `tests/test_model_roles.py` |
+| 启动本机Web工作区 | `video_doc/web_server.py` | `tests/test_web_service.py` |
+| 任务状态、编辑版本和独立导出 | `video_doc/web_service.py` | `tests/test_web_service.py` |
 
-表中的模块均位于`video_doc/`。当前没有现成Web服务或通用编辑服务，这些属于支线待实现内容。
+表中的模块均位于`video_doc/`。Web入口为`python -m video_doc.web_server`，静态界面位于`video_doc/webui/`，不需要Node构建步骤。
 
 ## 先获得完整的本地开发数据
 
