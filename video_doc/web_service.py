@@ -44,11 +44,10 @@ from video_doc.video_probe import VideoProbeError, probe_video, save_metadata
 
 
 TASK_STATE_SCHEMA_VERSION = "1.0"
-EDIT_SCHEMA_VERSION = "1.0"
-EDIT_EXPORT_SCHEMA_VERSION = "1.0"
+EDIT_SCHEMA_VERSION = "2.0"
 DEFAULT_MAX_UPLOAD_BYTES = 8 * 1024 * 1024 * 1024
 SUPPORTED_VIDEO_SUFFIXES = {".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v"}
-EDIT_ID_PATTERN = re.compile(r"^edit-[0-9]{14}-[0-9a-f]{8}$")
+EDIT_ID_PATTERN = re.compile(r"^editorial-[0-9a-f]{12}$")
 
 STAGE_SEQUENCE: tuple[tuple[str, str, int], ...] = (
     ("preflight", "检查视频与运行环境", 4),
@@ -235,6 +234,28 @@ def _editable_block(block: Mapping[str, Any], *, chapter_id: str | None = None) 
     else:
         payload["text"] = str(block.get("text", ""))
     return payload
+
+
+def _renderable_edit(content: Mapping[str, Any]) -> dict[str, Any]:
+    rendered = deepcopy(content)
+    sections = [rendered["overview"], rendered["overall_conclusion"]]
+    sections.extend(chapter["blocks"] for chapter in rendered["chapters"])
+    for blocks in sections:
+        for block in blocks:
+            if block.get("type") == "list":
+                block["text"] = "\n".join(
+                    f"{index}. {item['text']}" if block.get("list_kind") == "numbered" else f"- {item['text']}"
+                    for index, item in enumerate(block["items"], 1)
+                )
+            elif block.get("type") == "comparison":
+                columns = block["columns"]
+                block["text"] = "\n".join(
+                    f"{row['dimension']}: " + " | ".join(
+                        f"{column}: {cell['text']}" for column, cell in zip(columns, row["cells"])
+                    )
+                    for row in block["rows"]
+                )
+    return rendered
 
 
 def _editable_document(content: Mapping[str, Any]) -> dict[str, Any]:
@@ -482,7 +503,7 @@ class TaskService:
             "options": {
                 "ocr_mode": "auto",
                 "bounded_content": True,
-                "allow_llm": True,
+                "allow_llm": False,
                 "ffmpeg_dir": "",
             },
             "archived": False,
@@ -717,16 +738,10 @@ class TaskService:
             "output_root": str(self.output_root),
             "model_config": (self.project_root / "config" / "model-roles.json").is_file(),
             "llm_key_ready": llm_key_ready,
-            "llm_provider": (
-                "public_anonymous"
-                if (self.project_root / "config" / "model-roles-public.json").is_file()
-                else "configured_api"
-            ),
+            "llm_provider": "configured_api",
         }
 
     def _llm_key_configured(self) -> bool:
-        if (self.project_root / "config" / "model-roles-public.json").is_file():
-            return True
         if os.environ.get("VIDEO_DOC_LLM_API_KEY", "").strip():
             return True
         env_path = self.project_root / ".env"
@@ -761,7 +776,7 @@ class TaskService:
         return {
             "ocr_mode": ocr_mode,
             "bounded_content": bool(raw.get("bounded_content", True)),
-            "allow_llm": bool(raw.get("allow_llm", True)),
+            "allow_llm": raw.get("allow_llm") is True,
             "ffmpeg_dir": str(raw.get("ffmpeg_dir", "")).strip(),
         }
 
@@ -907,9 +922,6 @@ class TaskService:
             "--ocr",
             str(options.get("ocr_mode", "auto")),
         ]
-        public_registry = self.project_root / "config" / "model-roles-public.json"
-        if public_registry.is_file():
-            command.extend(["--model-registry", str(public_registry)])
         if options.get("bounded_content", True):
             command.append("--bounded-content")
         if options.get("allow_llm"):
@@ -932,6 +944,7 @@ class TaskService:
                 {
                     **(state.get("options") or {}),
                     **(payload if isinstance(payload, Mapping) else {}),
+                    "allow_llm": isinstance(payload, Mapping) and payload.get("allow_llm") is True,
                 }
             )
             state["status"] = "queued"
@@ -961,7 +974,6 @@ class TaskService:
     def _run_process(self, task_id: str, command: list[str]) -> None:
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
-        env.setdefault("VIDEO_DOC_PUBLIC_LLM_KEY", "anonymous")
         local_asr_model = self.project_root / "data" / "tmp" / "models" / "faster-whisper-small"
         if local_asr_model.is_dir() and not env.get("VIDEO_DOC_ASR_MODEL_PATH"):
             env["VIDEO_DOC_ASR_MODEL_PATH"] = str(local_asr_model)
@@ -1171,7 +1183,7 @@ class TaskService:
     # Machine and edited document versions
     # ------------------------------------------------------------------
     def _edit_root(self, task_id: str) -> Path:
-        return self._task_root(task_id) / "edits"
+        return self._task_root(task_id) / "m2" / "editorial-revisions"
 
     def _edit_path(self, task_id: str, edit_id: str) -> Path:
         if not EDIT_ID_PATTERN.fullmatch(edit_id):
@@ -1182,15 +1194,6 @@ class TaskService:
         return path
 
     def _latest_edit_id(self, task_id: str) -> str | None:
-        pointer = self._edit_root(task_id) / "current.json"
-        if pointer.is_file():
-            try:
-                payload = _read_json(pointer)
-                edit_id = payload.get("edit_id") if isinstance(payload, dict) else None
-                if isinstance(edit_id, str) and EDIT_ID_PATTERN.fullmatch(edit_id):
-                    return edit_id
-            except (OSError, json.JSONDecodeError):
-                pass
         manifests = self._list_edit_manifests(task_id)
         return str(manifests[0]["edit_id"]) if manifests else None
 
@@ -1206,10 +1209,9 @@ class TaskService:
             if not manifest_path.is_file():
                 continue
             try:
-                manifest = _read_json(manifest_path)
-                if isinstance(manifest, dict):
-                    versions.append(manifest)
-            except (OSError, json.JSONDecodeError):
+                _, manifest = self._edit_content(task_id, path.name)
+                versions.append(manifest)
+            except WebServiceError:
                 continue
         versions.sort(key=lambda item: str(item.get("created_at", "")), reverse=True)
         return versions
@@ -1235,15 +1237,31 @@ class TaskService:
         root = self._edit_path(task_id, edit_id)
         try:
             manifest = _read_json(root / "manifest.json")
-            content = _read_json(root / "content.json")
-        except (OSError, json.JSONDecodeError) as exc:
-            raise WebServiceError("编辑版本文件损坏。", status=409, code="EDIT_CORRUPT") from exc
-        if not isinstance(manifest, dict) or not isinstance(content, dict):
-            raise WebServiceError("编辑版本文件格式无效。", status=409, code="EDIT_CORRUPT")
-        content_bytes = _json_bytes(content)
-        if manifest.get("content_sha256") != _sha256_bytes(content_bytes):
-            raise WebServiceError("编辑版本内容校验失败。", status=409, code="EDIT_CORRUPT")
-        return content, manifest
+            raw = (root / "result.json").read_bytes()
+            record = manifest["files"]["result.json"]
+            expected = record["sha256"] if isinstance(record, dict) else record
+            if manifest["revision_id"] != edit_id or _sha256_bytes(raw) != expected:
+                raise ValueError("revision checksum mismatch")
+            revision = json.loads(raw)
+            schema = (revision["schema_name"], revision["schema_version"])
+            if revision["task_id"] != task_id or schema not in {
+                ("OfflineEditorialRevision", "1.0"),
+                ("EditorialRevision", EDIT_SCHEMA_VERSION),
+            }:
+                raise ValueError("unsupported editorial revision")
+            content = revision["edited_document"]
+            if not isinstance(content, dict):
+                raise ValueError("invalid editorial document")
+            return content, {
+                **manifest,
+                "edit_id": edit_id,
+                "version_name": manifest.get("version_name", edit_id),
+                "source_content_id": revision["source_content_id"],
+                "source_version": revision.get("source_version", "machine"),
+                "source_export_id": revision.get("source_export_id"),
+            }
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise WebServiceError("Invalid editorial revision.", status=409, code="EDIT_CORRUPT") from exc
 
     def _document_payload(
         self,
@@ -1258,7 +1276,7 @@ class TaskService:
         # The content task ID controls preview URLs and must not leak another task.
         for chapter in editable["chapters"]:
             for frame in chapter["frames"]:
-                frame["image_url"] = f"/api/tasks/{task_id}/frames/{frame['frame_id']}"
+                frame["image_url"] = f"/api/tasks/{task_id}/frames/{frame['frame_id']}?version={version_id}"
         return {
             "version_id": version_id,
             "kind": kind,
@@ -1288,19 +1306,18 @@ class TaskService:
             selected = machine_payload
             edit_id = (
                 latest_edit_id
-                if version_id is None or version_id == "latest"
+                if version_id == "latest"
                 else version_id if version_id != "machine" else None
             )
             if edit_id:
-                if edit_id:
-                    edit_content, edit_manifest = self._edit_content(task_id, edit_id)
-                    selected = self._document_payload(
-                        task_id,
-                        version_id=edit_id,
-                        kind="edit",
-                        content=edit_content,
-                        manifest=edit_manifest,
-                    )
+                edit_content, edit_manifest = self._edit_content(task_id, edit_id)
+                selected = self._document_payload(
+                    task_id,
+                    version_id=edit_id,
+                    kind="edit",
+                    content=edit_content,
+                    manifest=edit_manifest,
+                )
             return {
                 "task": self._task_summary(task_id, state),
                 "machine": machine_payload,
@@ -1315,81 +1332,43 @@ class TaskService:
             raise WebServiceError("编辑内容无效。", code="INVALID_EDIT")
         base_version = payload.get("base_version")
         if not isinstance(base_version, str) or not base_version:
-            base_version = self._latest_edit_id(task_id) or "machine"
+            base_version = "machine"
         with self._lock:
-            machine = self._machine_content(task_id)
             if base_version == "machine":
+                machine = self._machine_content(task_id)
                 base_content: dict[str, Any] = deepcopy(machine)
                 base_manifest: Mapping[str, Any] = {"content_id": machine.get("content_id")}
             else:
                 base_content, base_manifest = self._edit_content(task_id, base_version)
             edited = _apply_editable(base_content, editable)
-            content_bytes = _json_bytes(edited)
-            creation = datetime.now().strftime("%Y%m%d%H%M%S")
-            edit_id = f"edit-{creation}-{uuid4().hex[:8]}"
-            while (self._edit_root(task_id) / edit_id).exists():
-                edit_id = f"edit-{creation}-{uuid4().hex[:8]}"
             version_name = str(payload.get("version_name") or "").strip()
             if not version_name:
                 version_name = f"编辑版本 {datetime.now().strftime('%m-%d %H:%M')}"
             version_name = version_name[:80]
-            deleted_frames = []
-            original_ids = {
-                str(frame.get("frame_id"))
-                for chapter in base_content.get("chapters", [])
-                for frame in chapter.get("frames", [])
-            }
-            edited_ids = {
-                str(frame.get("frame_id"))
-                for chapter in edited.get("chapters", [])
-                for frame in chapter.get("frames", [])
-            }
-            deleted_frames = sorted(original_ids - edited_ids)
-            manifest = {
-                "schema_name": "EditedDocumentVersion",
+            edited.pop("generation", None)
+            edited.pop("coverage", None)
+            revision = {
+                "schema_name": "EditorialRevision",
                 "schema_version": EDIT_SCHEMA_VERSION,
                 "task_id": task_id,
-                "edit_id": edit_id,
-                "version_name": version_name,
-                "created_at": _utc_now(),
                 "source_version": base_version,
-                "source_content_id": base_manifest.get("source_content_id")
-                or base_manifest.get("content_id")
-                or base_content.get("content_id"),
-                "source_document_sha256": _sha256_bytes(_json_bytes(base_content)),
-                "content_sha256": _sha256_bytes(content_bytes),
-                "chapter_count": len(edited.get("chapters", [])),
-                "block_count": sum(
-                    len(chapter.get("blocks", []))
-                    for chapter in edited.get("chapters", [])
-                ),
-                "frame_count": len(edited_ids),
-                "deleted_frame_ids": deleted_frames,
-                "editing_scope": "title, overview, conclusion, chapter title, body blocks, frame removal",
+                "source_export_id": base_manifest.get("source_export_id"),
+                "version_name": version_name,
+                "source_content_id": base_manifest.get("source_content_id") or base_content.get("content_id"),
+                "source_json_sha256": _sha256_bytes(_json_bytes(base_content)),
+                "edited_document": edited,
+                "deleted_frame_ids": sorted(set(_referenced_frame_ids(base_content)) - set(_referenced_frame_ids(edited))),
             }
-            edit_root = self._edit_root(task_id)
-            edit_root.mkdir(parents=True, exist_ok=True)
-            destination = edit_root / edit_id
-            temporary = edit_root / f".{edit_id}.{uuid4().hex}.tmp"
-            try:
-                temporary.mkdir(parents=True)
-                _write_bytes_atomic(temporary / "content.json", content_bytes)
-                _write_json_atomic(temporary / "manifest.json", manifest)
-                os.replace(temporary, destination)
-            finally:
-                if temporary.exists():
-                    shutil.rmtree(temporary, ignore_errors=True)
-            _write_json_atomic(
-                edit_root / "current.json",
-                {
-                    "schema_version": EDIT_SCHEMA_VERSION,
-                    "task_id": task_id,
-                    "edit_id": edit_id,
-                    "content_sha256": manifest["content_sha256"],
-                },
-            )
+            request_sha256 = _sha256_bytes(_json_bytes(revision))
+            edit_id = "editorial-" + request_sha256[:12]
+            edited["content_id"] = edit_id
+            destination = self._edit_root(task_id) / edit_id
+            if not destination.exists():
+                self._write_edit_group(task_id, destination, revision, version_name, request_sha256)
+            saved, manifest = self._edit_content(task_id, edit_id)
+            if saved.get("content_id") != edit_id or manifest.get("request_sha256") != request_sha256:
+                raise WebServiceError("Editorial revision conflict.", status=409, code="EDIT_CONFLICT")
             state = self._load_state(task_id)
-            state["latest_edit_id"] = edit_id
             state["last_edited_at"] = manifest["created_at"]
             self._event(state, "edited", f"已保存{version_name}", edit_id=edit_id)
             self._save_state(state)
@@ -1397,7 +1376,7 @@ class TaskService:
                 task_id,
                 version_id=edit_id,
                 kind="edit",
-                content=edited,
+                content=saved,
                 manifest=manifest,
             )
 
@@ -1416,46 +1395,31 @@ class TaskService:
         return result.group_path, str(result.result_id)
 
     def _export_edit(self, task_id: str, edit_id: str) -> tuple[Path, dict[str, Any]]:
-        content, edit_manifest = self._edit_content(task_id, edit_id)
-        root = self._task_root(task_id) / "web-exports" / edit_id
-        manifest_path = root / "manifest.json"
-        if manifest_path.is_file():
-            try:
-                cached = _read_json(manifest_path)
-                if not isinstance(cached, dict):
-                    raise ValueError("edit export manifest is not an object")
-                files = cached.get("files", {})
-                valid_files = all(
-                    isinstance(record, dict)
-                    and (root / name).is_file()
-                    and _sha256_bytes((root / name).read_bytes()) == record.get("sha256")
-                    for name, record in files.items()
-                ) if isinstance(files, dict) and files else False
-                images = cached.get("images", [])
-                valid_images = all(
-                    (root / "images" / f"{frame_id}.png").is_file()
-                    for frame_id in images
-                )
-                if (
-                    cached.get("edit_content_sha256") == edit_manifest["content_sha256"]
-                    and valid_files
-                    and valid_images
-                ):
-                    return root, cached
-            except (OSError, ValueError, json.JSONDecodeError):
-                pass
+        _, manifest = self._edit_content(task_id, edit_id)
+        return self._edit_path(task_id, edit_id), manifest
 
-        try:
-            inputs = _load_export_inputs(self.output_root, task_id)
-        except Exception as exc:
-            raise WebServiceError(
-                f"无法读取导出所需的原始画面：{_compact_error(str(exc))}",
-                status=409,
-                code="EXPORT_INPUT_INVALID",
-            ) from exc
+    def _write_edit_group(
+        self, task_id: str, root: Path, revision: dict[str, Any], version_name: str, request_sha256: str,
+    ) -> None:
+        content = revision["edited_document"]
+        referenced = _referenced_frame_ids(content)
+        embedded = {}
+        degraded = []
+        if revision["source_version"] != "machine":
+            for frame_id in referenced:
+                image, _ = self.frame_file(task_id, frame_id, revision["source_version"])
+                embedded[frame_id] = image.read_bytes()
+        elif referenced:
+            try:
+                inputs = _load_export_inputs(self.output_root, task_id)
+            except Exception as exc:
+                raise WebServiceError(
+                    f"无法读取导出所需的原始画面：{_compact_error(str(exc))}",
+                    status=409,
+                    code="EXPORT_INPUT_INVALID",
+                ) from exc
+            embedded, degraded = _collect_frame_bytes(inputs, referenced)
         effective = deepcopy(content)
-        referenced = _referenced_frame_ids(effective)
-        embedded, degraded = _collect_frame_bytes(inputs, referenced)
         while True:
             missing = [frame_id for frame_id in referenced if frame_id not in embedded]
             if missing:
@@ -1468,7 +1432,7 @@ class TaskService:
                 for frame_id in missing:
                     degraded.append(f"IMAGE_UNAVAILABLE:{frame_id}")
                 referenced = _referenced_frame_ids(effective)
-            docx_bytes, failed = render_export_docx(effective, embedded=embedded)
+            docx_bytes, failed = render_export_docx(_renderable_edit(effective), embedded=embedded)
             if not failed:
                 break
             changed = False
@@ -1491,15 +1455,16 @@ class TaskService:
                 ]
             referenced = _referenced_frame_ids(effective)
 
-        markdown_bytes = render_export_markdown(effective, embedded=set(embedded))
-        json_bytes = _json_bytes(effective)
+        markdown_bytes = render_export_markdown(_renderable_edit(effective), embedded=set(embedded))
+        revision["edited_document"] = effective
+        json_bytes = _json_bytes(revision)
         manifest = {
-            "schema_name": "EditedDocumentExport",
-            "schema_version": EDIT_EXPORT_SCHEMA_VERSION,
+            "schema_name": "EditorialRevisionManifest",
+            "schema_version": EDIT_SCHEMA_VERSION,
             "task_id": task_id,
-            "edit_id": edit_id,
-            "source_content_id": edit_manifest.get("source_content_id"),
-            "edit_content_sha256": edit_manifest["content_sha256"],
+            "revision_id": root.name,
+            "request_sha256": request_sha256,
+            "version_name": version_name,
             "created_at": _utc_now(),
             "status": "degraded" if degraded else "success",
             "degraded_reasons": degraded,
@@ -1509,27 +1474,31 @@ class TaskService:
                 "result.docx": {"sha256": _sha256_bytes(docx_bytes), "bytes": len(docx_bytes)},
             },
             "images": sorted(embedded),
+            "deleted_frame_ids": revision.get("deleted_frame_ids", []),
         }
-        temporary = root.with_name(f".{root.name}.{uuid4().hex}.tmp")
+        temporary = root.with_name(f".tmp-{uuid4().hex[:12]}")
         if temporary.exists():
             shutil.rmtree(temporary, ignore_errors=True)
         temporary.mkdir(parents=True)
         try:
-            _write_bytes_atomic(temporary / "result.json", json_bytes)
-            _write_bytes_atomic(temporary / "result.md", markdown_bytes)
-            _write_bytes_atomic(temporary / "result.docx", docx_bytes)
+            (temporary / "result.json").write_bytes(json_bytes)
+            (temporary / "result.md").write_bytes(markdown_bytes)
+            (temporary / "result.docx").write_bytes(docx_bytes)
             images_root = temporary / "images"
             images_root.mkdir()
             for frame_id, payload in embedded.items():
-                _write_bytes_atomic(images_root / f"{frame_id}.png", payload)
-            _write_json_atomic(temporary / "manifest.json", manifest)
-            if root.exists():
-                shutil.rmtree(root)
-            os.replace(temporary, root)
+                filename = f"images/{frame_id}.png"
+                (temporary / filename).write_bytes(payload)
+                manifest["files"][filename] = {"sha256": _sha256_bytes(payload), "bytes": len(payload)}
+            (temporary / "manifest.json").write_bytes(_json_bytes(manifest))
+            try:
+                os.rename(temporary, root)
+            except OSError:
+                if not root.is_dir():
+                    raise
         finally:
             if temporary.exists():
                 shutil.rmtree(temporary, ignore_errors=True)
-        return root, manifest
 
     def prepare_export(self, task_id: str, version_id: str) -> dict[str, Any]:
         if version_id == "machine":
@@ -1544,6 +1513,18 @@ class TaskService:
             "files": ["result.json", "result.md", "result.docx"],
         }
 
+    @staticmethod
+    def _revision_file(root: Path, manifest: Mapping[str, Any], name: str) -> Path:
+        path = root / name
+        try:
+            record = manifest["files"][name]
+            expected = record["sha256"] if isinstance(record, dict) else record
+            if _sha256_bytes(path.read_bytes()) != expected:
+                raise ValueError("file checksum mismatch")
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise WebServiceError("编辑版本文件缺失或损坏。", status=409, code="EDIT_CORRUPT") from exc
+        return path
+
     def export_file(self, task_id: str, version_id: str, fmt: str) -> tuple[Path, str, str]:
         if fmt not in {"json", "md", "docx"}:
             raise WebServiceError("不支持的下载格式。", code="INVALID_FORMAT")
@@ -1552,8 +1533,8 @@ class TaskService:
             source = group / f"result.{fmt}"
             label = "machine"
         else:
-            group, _ = self._export_edit(task_id, version_id)
-            source = group / f"result.{fmt}"
+            group, manifest = self._export_edit(task_id, version_id)
+            source = self._revision_file(group, manifest, f"result.{fmt}")
             label = version_id
         if not source.is_file():
             raise WebServiceError("导出文件不存在。", status=404, code="EXPORT_NOT_FOUND")
@@ -1566,9 +1547,13 @@ class TaskService:
         }.get(suffix, mimetypes.guess_type(source.name)[0] or "application/octet-stream")
         return source, download_name, mime
 
-    def frame_file(self, task_id: str, frame_id: str) -> tuple[Path, str]:
+    def frame_file(self, task_id: str, frame_id: str, version_id: str = "machine") -> tuple[Path, str]:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", frame_id):
             raise WebServiceError("画面ID无效。", code="INVALID_FRAME_ID")
+        if version_id != "machine":
+            root, manifest = self._export_edit(task_id, version_id)
+            path = self._revision_file(root, manifest, f"images/{frame_id}.png")
+            return path, "image/png"
         try:
             _, group, files, _ = _load_frame_inputs(self.output_root, task_id)
             entry = files.get(frame_id)

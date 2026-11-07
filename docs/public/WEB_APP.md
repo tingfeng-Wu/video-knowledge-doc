@@ -13,9 +13,7 @@ python -m video_doc.web_server --open
 
 真实视频处理需要FFmpeg/FFprobe。ASR与OCR模型在首次使用时可能下载；文本模型调用必须通过界面显式授权，已有阶段缓存会优先复用。
 
-Web界面默认使用`config/model-roles-public.json`中的匿名公共模型，不需要百炼API Key。该服务best-effort、按IP限流，每个请求至少间隔约30秒，并会把待处理文本发送给公共模型服务。正式或敏感内容应切换到受控商业API。命令行默认仍使用`config/model-roles.json`，不影响原有百炼接入。
-
-匿名模型输出长度有限，Web会自动把长章节按最多2个连续单元分批，并按项目原有来源覆盖和引用规则校验。
+Web沿用百炼模型配置。需要模型调用时，请配置 `VIDEO_DOC_LLM_API_KEY` 并为本次运行授权。
 
 可设置`VIDEO_DOC_ASR_MODEL_PATH`指向本地Faster-Whisper模型目录，避免运行时访问模型仓库。Web服务也会自动复用
 `data/tmp/models/faster-whisper-small/`中的本地模型。
@@ -39,18 +37,13 @@ Web界面默认使用`config/model-roles-public.json`中的匿名公共模型，
   _uploads/<task-id>/<video-file>        通过页面上传的视频
   <task-id>/
     task.json                            现有任务清单
-    m2/                                  现有机器结果组，Web不修改
-    edits/
-      current.json                       最新编辑版本指针
-      <edit-id>/
-        content.json                     独立编辑内容
-        manifest.json                    来源、内容哈希与版本信息
-    web-exports/<edit-id>/               编辑版独立导出
-      result.json
-      result.md
-      result.docx
-      images/
-      manifest.json
+    m2/
+      editorial-revisions/<revision-id>/
+        result.json
+        result.md
+        result.docx
+        images/
+        manifest.json
 ```
 
 机器正式组、机器导出的`current.json`和CLI行为保持不变。编辑版本引用来源机器正文的`content_id`，但不会复用机器内容ID作为编辑版身份。

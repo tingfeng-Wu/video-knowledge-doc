@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
+import urllib.error
 import threading
 import urllib.request
 from copy import deepcopy
@@ -21,6 +24,7 @@ def _document() -> dict:
         "task_id": "WEB01",
         "content_id": "document-content-web-test",
         "title": "原始文档标题",
+        "source_plan": {"result_source": "primary"},
         "overview": [
             {
                 "block_id": "overview-p001",
@@ -110,6 +114,14 @@ def service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TaskService:
     )
     document = _document()
     monkeypatch.setattr(instance, "_machine_content", lambda task_id: deepcopy(document))
+    monkeypatch.setattr("video_doc.web_service._load_export_inputs", lambda *_: None)
+    image = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aBSsAAAAASUVORK5CYII="
+    )
+    monkeypatch.setattr(
+        "video_doc.web_service._collect_frame_bytes",
+        lambda _, frame_ids: ({frame_id: image for frame_id in frame_ids}, []),
+    )
     return instance
 
 
@@ -150,17 +162,31 @@ def test_edit_creates_separate_immutable_version(service: TaskService) -> None:
     assert saved["manifest"]["source_version"] == "machine"
     assert saved["manifest"]["deleted_frame_ids"] == ["fr000002"]
 
-    reopened = service.get_document("WEB01")
+    reopened = service.get_document("WEB01", saved["version_id"])
     assert reopened["machine"]["editable"]["title"] == "原始文档标题"
     assert reopened["machine"]["editable"]["overview"][0]["text"] == "原始概述。"
     assert reopened["latest_edit_id"] == saved["version_id"]
+    assert service.get_document("WEB01")["selected"]["kind"] == "machine"
     assert reopened["selected"]["editable"]["chapters"][0]["title"] == "修改后的章节"
     assert len(reopened["versions"]) == 1
 
-    edit_root = service._task_root("WEB01") / "edits" / saved["version_id"]
-    assert (edit_root / "content.json").is_file()
+    edit_root = service._edit_root("WEB01") / saved["version_id"]
+    assert (edit_root / "result.json").is_file()
+    assert not (edit_root.parent / "current.json").exists()
+    for fmt in ("json", "md", "docx"):
+        assert service.export_file("WEB01", saved["version_id"], fmt)[0].is_file()
+    assert service.frame_file("WEB01", "fr000001", saved["version_id"])[0].is_file()
+    assert "影响被修正" in (edit_root / "result.md").read_text("utf-8")
+    replay = service.save_edit("WEB01", {
+        "base_version": "machine", "version_name": saved["manifest"]["version_name"], "editable": editable,
+    })
+    assert replay["version_id"] == saved["version_id"]
     assert (edit_root / "manifest.json").is_file()
     assert "content_id" not in json.loads((edit_root / "manifest.json").read_text("utf-8"))
+    (edit_root / "result.md").write_bytes(b"modified")
+    with pytest.raises(WebServiceError) as corrupt:
+        service.export_file("WEB01", saved["version_id"], "md")
+    assert corrupt.value.code == "EDIT_CORRUPT"
 
 
 def test_invalid_edit_is_rejected(service: TaskService) -> None:
@@ -229,6 +255,28 @@ def test_http_server_serves_app_and_health(service: TaskService) -> None:
     thread.start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
     try:
+        revision = service.save_edit("WEB01", {"editable": service.get_document("WEB01")["machine"]["editable"]})
+        image_url = revision["editable"]["chapters"][0]["frames"][0]["image_url"]
+        with urllib.request.urlopen(base + image_url, timeout=5) as response:
+            assert response.headers.get_content_type() == "image/png"
+            assert response.read().startswith(b"\x89PNG")
+
+        external = urllib.request.Request(
+            f"{base}/api/tasks", data=b"{}", headers={"Origin": "https://example.com"}
+        )
+        with pytest.raises(urllib.error.HTTPError) as rejected:
+            urllib.request.urlopen(external, timeout=5)
+        assert rejected.value.code == 403
+
+        for headers, code in (
+            ({"Host": "example.com"}, 403),
+            ({"Content-Type": "text/plain"}, 415),
+        ):
+            request = urllib.request.Request(f"{base}/api/tasks", data=b"{}", headers=headers)
+            with pytest.raises(urllib.error.HTTPError) as rejected:
+                urllib.request.urlopen(request, timeout=5)
+            assert rejected.value.code == code
+
         with urllib.request.urlopen(f"{base}/api/health", timeout=5) as response:
             payload = json.loads(response.read().decode("utf-8"))
         assert payload["status"] == "ok"
@@ -245,3 +293,36 @@ def test_http_server_serves_app_and_health(service: TaskService) -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_legacy_revision_is_read_only(service: TaskService) -> None:
+    revision_id = "editorial-0123456789ab"
+    root = service._edit_root("WEB01") / revision_id
+    root.mkdir(parents=True)
+    raw = json.dumps({
+        "schema_name": "OfflineEditorialRevision",
+        "schema_version": "1.0",
+        "task_id": "WEB01",
+        "source_content_id": "document-content-web-test",
+        "edited_document": _document(),
+    }).encode()
+    (root / "result.json").write_bytes(raw)
+    (root / "manifest.json").write_text(json.dumps({
+        "revision_id": revision_id, "files": {"result.json": hashlib.sha256(raw).hexdigest()},
+    }), encoding="utf-8")
+    assert service.get_document("WEB01", revision_id)["selected"]["version_id"] == revision_id
+    assert service.export_file("WEB01", revision_id, "json")[0].read_bytes() == raw
+
+
+def test_model_call_requires_explicit_boolean(
+    service: TaskService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = service._load_state("WEB01")
+    assert "--allow-llm" not in service._runner_command(state)
+    assert service._normalize_options({"allow_llm": "false"})["allow_llm"] is False
+    assert service._normalize_options({"allow_llm": True})["allow_llm"] is True
+    state["options"]["allow_llm"] = True
+    service._save_state(state)
+    monkeypatch.setattr(threading.Thread, "start", lambda _: None)
+    service.start_task("WEB01", {})
+    assert "--allow-llm" not in service._runner_command(service._load_state("WEB01"))

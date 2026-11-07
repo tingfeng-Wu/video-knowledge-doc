@@ -45,6 +45,6 @@ OCR和画面事件主要用于时间关联、选图和模板说明。当前正�
 
 coverage 2.0允许不同段落合理复用同一来源单元，检查来源、章内归属、覆盖及单调顺序。single/batch提示词为2.1。旧组按保存的coverage/prompt版本复验，原始响应重放能够复现对应结果。
 
-编辑内容作为独立版本保存，引用原机器结果，不写回机器正式组。Web编辑服务保存在`<task>/edits/<edit-id>/`，机器正文仍由原`content/current.json`指向；编辑版导出写入`<task>/web-exports/<edit-id>/`，不会切换机器导出的`current.json`。
+Web编辑版本在 `<task>/m2/editorial-revisions/<revision-id>/` 保存正文、三格式导出和配图。界面会话保存所选版本。
 
 模块名和注释保留了旧M1/M2及阶段号，当前工作安排见[项目总览](PROJECT.md)。常用数据结构、读取接口和测试入口见[开发指南](DEVELOPMENT.md)。

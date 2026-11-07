@@ -141,9 +141,6 @@ BOUNDARY_ALIGNMENT = "selected_transcript_event_start"
 MIN_CHAPTER_MS = 60000
 
 FROZEN_MODEL = "qwen3.7-flash"
-PUBLIC_ANONYMOUS_PROFILE = "pollinations_anonymous"
-PUBLIC_ANONYMOUS_MODEL = "openai"
-PUBLIC_ANONYMOUS_BASE_URL = "https://text.pollinations.ai/openai"
 FROZEN_RESPONSE_FORMAT: dict[str, Any] = {"type": "json_object"}
 FROZEN_ALTERNATE_FALLBACK = "none"
 FROZEN_MAX_ATTEMPTS = 2
@@ -1325,20 +1322,8 @@ def _enforce_frozen_role(role: LlmRoleConfig) -> None:
         "supplier_request_hard_limit": FROZEN_SUPPLIER_BUDGET,
     }:
         raise RoleConfigInvalidError("boundary_model的runtime_budget必须为1次业务调用/2次供应商请求。")
-    public_anonymous = (
-        role.connection_profile is not None
-        and role.connection_profile.name == PUBLIC_ANONYMOUS_PROFILE
-        and role.connection_profile.base_url == PUBLIC_ANONYMOUS_BASE_URL
-    )
-    allowed_models = (
-        {FROZEN_MODEL, PUBLIC_ANONYMOUS_MODEL}
-        if public_anonymous
-        else {FROZEN_MODEL}
-    )
-    if role.model not in allowed_models:
-        raise RoleConfigInvalidError(
-            f"boundary_model的model必须为{', '.join(sorted(allowed_models))}。"
-        )
+    if role.model != FROZEN_MODEL:
+        raise RoleConfigInvalidError(f"boundary_model的model必须为{FROZEN_MODEL}。")
     generation = role.generation
     assert generation is not None
     if generation.temperature != 0.0:

@@ -239,9 +239,6 @@ VALIDATION_SUITE_ID = "document-content-validator-suite-2-0"
 VALIDATION_RETRY_POLICY = "validation-feedback-1.0"
 CACHE_NAMESPACE = "content-model-unified-timeline-2-0"
 FROZEN_MODEL = "qwen3.7-flash"
-PUBLIC_ANONYMOUS_PROFILE = "pollinations_anonymous"
-PUBLIC_ANONYMOUS_MODEL = "openai"
-PUBLIC_ANONYMOUS_BASE_URL = "https://text.pollinations.ai/openai"
 FROZEN_RESPONSE_FORMAT: dict[str, Any] = {"type": "json_object"}
 FROZEN_ALTERNATE_FALLBACK = "none"
 FROZEN_MAX_ATTEMPTS = 2
@@ -1754,7 +1751,6 @@ def assemble_document_content(
     *,
     mode: str,
     backend: str,
-    model: str = FROZEN_MODEL,
     per_call_max_tokens: Mapping[str, int] | None = None,
     coverage_policy_version: str | None = None,
     prompt_versions: Mapping[str, str] | None = None,
@@ -1910,7 +1906,7 @@ def assemble_document_content(
             "status": "success",
             "mode": mode,
             "backend": backend,
-            "model": model,
+            "model": FROZEN_MODEL,
             "temperature": 0.0,
             "enable_thinking": False,
             "prompt_versions": {
@@ -2161,8 +2157,8 @@ def validate_structured_document_content_v3(
         _vfail("generation.mode无效。")
     if not isinstance(generation["backend"], str) or not generation["backend"]:
         _vfail("generation.backend必须是非空字符串。")
-    if generation["model"] not in {FROZEN_MODEL, PUBLIC_ANONYMOUS_MODEL}:
-        _vfail("generation.model不受支持。")
+    if generation["model"] != FROZEN_MODEL:
+        _vfail("generation.model必须为qwen3.7-flash。")
     if generation["temperature"] != 0.0 or generation["enable_thinking"] is not False:
         _vfail("generation采样身份与冻结角色不符。")
     batch_skipped = chapter_count == 1
@@ -2429,32 +2425,13 @@ def _enforce_frozen_role(role: LlmRoleConfig) -> None:
         bad("enabled", role.enabled)
     if role.revision_policy != "provider_model_name":
         bad("revision_policy", role.revision_policy)
-    public_anonymous = (
-        role.connection_profile is not None
-        and role.connection_profile.name == PUBLIC_ANONYMOUS_PROFILE
-        and role.connection_profile.base_url == PUBLIC_ANONYMOUS_BASE_URL
-    )
-    allowed_models = (
-        {FROZEN_MODEL, PUBLIC_ANONYMOUS_MODEL}
-        if public_anonymous
-        else {FROZEN_MODEL}
-    )
-    if role.model not in allowed_models:
+    if role.model != FROZEN_MODEL:
         bad("model", role.model)
     profile = role.connection_profile
-    if (
-        profile is None
-        or profile.backend != "openai_compatible"
-        or profile.name not in {"bailian_default", PUBLIC_ANONYMOUS_PROFILE}
-    ):
+    if profile is None or profile.name != "bailian_default" or profile.backend != "openai_compatible":
         bad("connection_profile", profile)
     assert profile is not None
-    expected_key_env = (
-        "VIDEO_DOC_PUBLIC_LLM_KEY"
-        if profile.name == PUBLIC_ANONYMOUS_PROFILE
-        else "VIDEO_DOC_LLM_API_KEY"
-    )
-    if profile.api_key_env != expected_key_env:
+    if profile.api_key_env != "VIDEO_DOC_LLM_API_KEY":
         bad("connection_profile.api_key_env", profile.api_key_env)
     if role.resolved_provider != {"backend": "openai_compatible", "base_url": profile.base_url}:
         bad("resolved_provider", role.resolved_provider)
@@ -2673,15 +2650,7 @@ def _validate_execution_report(
     business, supplier, hits = counts
     expected_calls = 2 if len(content["chapters"]) == 1 else 3
     if composer_version == "1.2":
-        scope_unit_limit = (
-            2
-            if content["generation"]["model"] == PUBLIC_ANONYMOUS_MODEL
-            else 6
-        )
-        expected_calls = 1 + sum(
-            (chapter["unit_count"] + scope_unit_limit - 1) // scope_unit_limit
-            for chapter in content["coverage"]["chapters"]
-        )
+        expected_calls = 1 + sum((chapter["unit_count"] + 5) // 6 for chapter in content["coverage"]["chapters"])
         if supplier > 12:
             raise ContentCacheCorruptError("CONTENT_CACHE_CORRUPT: scoped supplier budget exceeded")
     # 修复裁决D3.2计数不变式：live=business−hits、live≤supplier≤2×live、
@@ -2777,12 +2746,7 @@ def _validate_raw_responses_doc(
     calls = document["calls"]
     chapter_count = len(inputs.ledgers)
     bounded = composer_version_for_tokens(content["generation"]["per_call_max_tokens"]) == "1.2"
-    scope_unit_limit = (
-        2 if content["generation"]["model"] == PUBLIC_ANONYMOUS_MODEL else 6
-    )
-    scopes = (
-        bounded_scopes(inputs, unit_limit=scope_unit_limit) if bounded else []
-    )
+    scopes = bounded_scopes(inputs) if bounded else []
     expected_calls = len(scopes) + 1 if bounded else (2 if chapter_count == 1 else 3)
     if not isinstance(calls, list) or len(calls) != expected_calls:
         raise ContentCacheCorruptError(
@@ -2841,11 +2805,7 @@ def _validate_raw_responses_doc(
         bounded_results.append(normalized)
     if bounded:
         responses = iter(bounded_results)
-        single, batch, final = _bounded_calls(
-            inputs,
-            lambda *args: next(responses),
-            unit_limit=scope_unit_limit,
-        )
+        single, batch, final = _bounded_calls(inputs, lambda *args: next(responses))
         normalized_by_slot = {CALL_SINGLE: single, CALL_GLOBAL: final}
         if batch is not None:
             normalized_by_slot[CALL_BATCH] = batch
@@ -2856,7 +2816,6 @@ def _validate_raw_responses_doc(
         normalized_by_slot[CALL_GLOBAL],
         mode=str(content["generation"]["mode"]),
         backend=str(content["generation"]["backend"]),
-        model=str(content["generation"]["model"]),
         per_call_max_tokens=expected_max_tokens,
         # 引用约束修复（2026-11-03）：重放按组内存储的coverage策略版本重装配，
         # 1.0旧组逐字节复现（含content_id），新规则不改变旧组解释。
@@ -2898,7 +2857,6 @@ def _validate_llm_cache_entry(
     role_cache_identity_sha256: str,
     messages_sha256: str,
     inputs: ContentInputs,
-    expected_model: str = FROZEN_MODEL,
 ) -> tuple[Any, dict[str, Any]]:
     if not isinstance(entry, dict) or set(entry) != _LLM_CACHE_KEYS:
         raise ContentCacheCorruptError(
@@ -2910,7 +2868,7 @@ def _validate_llm_cache_entry(
         or entry["call_slot"] != slot
         or entry["role_cache_identity_sha256"] != role_cache_identity_sha256
         or entry["messages_sha256"] != messages_sha256
-        or entry["model"] != expected_model
+        or entry["model"] != FROZEN_MODEL
     ):
         raise ContentCacheCorruptError(
             f"{ERROR_CACHE_CORRUPT}：content llm-cache条目身份与本次调用不符。"
@@ -2949,7 +2907,6 @@ def _write_llm_cache_entry(
     raw_response: Any,
     normalized_response: Mapping[str, Any],
     backend: str,
-    model: str = FROZEN_MODEL,
 ) -> None:
     entry = {
         "schema_name": LLM_CACHE_SCHEMA_NAME,
@@ -2961,7 +2918,7 @@ def _write_llm_cache_entry(
         "normalized_response": dict(normalized_response),
         "supplier_request_count": 1,
         "backend": backend,
-        "model": model,
+        "model": FROZEN_MODEL,
         "created_at": _iso_now(),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -3350,32 +3307,23 @@ def _write_failure(
 # ---------------------------------------------------------------------------
 
 
-def bounded_scopes(inputs: ContentInputs, unit_limit: int = 6) -> list[ContentInputs]:
-    """Build deterministic consecutive-unit scopes for bounded generation.
+def bounded_scopes(inputs: ContentInputs) -> list[ContentInputs]:
+    """bounded-chapter-units-1.0: up to six consecutive units per call.
 
     Scope reconstruction is deterministic and used for raw-response replay.
     Chapters never share a request. All original unit/event IDs are retained.
     """
-    if not isinstance(unit_limit, int) or not 1 <= unit_limit <= 6:
-        raise ValueError("bounded scope unit_limit must be between 1 and 6.")
     scopes = []
     for ledger in inputs.ledgers:
-        for offset in range(0, len(ledger.units), unit_limit):
-            part = dataclasses.replace(
-                ledger, units=ledger.units[offset:offset + unit_limit]
-            )
+        for offset in range(0, len(ledger.units), 6):
+            part = dataclasses.replace(ledger, units=ledger.units[offset:offset + 6])
             scopes.append(dataclasses.replace(inputs, ledgers=(part,)))
     return scopes
 
 
-def _bounded_calls(
-    inputs: ContentInputs,
-    run: Any,
-    *,
-    unit_limit: int = 6,
-) -> tuple[dict | None, dict | None, dict | None]:
+def _bounded_calls(inputs: ContentInputs, run: Any) -> tuple[dict | None, dict | None, dict | None]:
     paragraphs = {ledger.chapter_id: [] for ledger in inputs.ledgers}
-    for scope in bounded_scopes(inputs, unit_limit=unit_limit):
+    for scope in bounded_scopes(inputs):
         result = run(CALL_SINGLE, build_single_payload(scope.ledgers[0]), scope)
         if result is None:
             return None, None, None
@@ -3459,7 +3407,6 @@ def _run_content_slot(
             role_cache_identity_sha256=role_call_sha256,
             messages_sha256=messages_sha256,
             inputs=inputs,
-            expected_model=str(role.model),
         )
         counters["cache_hits"] += 1
         record(entry["raw_response"], cache_hit=True, attempt_count=1)
@@ -3573,7 +3520,6 @@ def _run_content_slot(
             raw_response=raw_response,
             normalized_response=normalized,
             backend=backend,
-            model=str(role.model),
         )
         record(raw_response, cache_hit=False, attempt_count=attempt)
         note_normalization(raw_response, attempt)
@@ -3728,24 +3674,14 @@ def compose_document_v2(
             normalized_by_slot: dict[str, Any] = {}
             chapter_paragraphs: dict[str, list[dict[str, Any]]] = {}
             if bounded:
-                scope_unit_limit = (
-                    2
-                    if role.connection_profile is not None
-                    and role.connection_profile.name == PUBLIC_ANONYMOUS_PROFILE
-                    else 6
-                )
-                if len(bounded_scopes(inputs, unit_limit=scope_unit_limit)) + 1 > 12:
+                if len(bounded_scopes(inputs)) + 1 > 12:
                     raise ContentBudgetExceededError("CONTENT_BUDGET_EXCEEDED: scoped plan exceeds 12 calls; zero requests")
                 def run(slot, payload, scope):
                     return _run_content_slot(slot=slot, payload=payload, inputs=scope, role=role,
                         env=env, transport=active_transport, mock_mode=mock_mode, backend=backend,
                         m2_root=m2_root, counters=counters, errors=errors, calls=calls,
                         failed_attempts=failed_attempts, normalizations=normalizations, bounded=True)
-                single, batch, final = _bounded_calls(
-                    inputs,
-                    run,
-                    unit_limit=scope_unit_limit,
-                )
+                single, batch, final = _bounded_calls(inputs, run)
                 if single is not None:
                     normalized_by_slot[CALL_SINGLE] = single
                 if batch is not None:
@@ -3838,7 +3774,6 @@ def compose_document_v2(
                     normalized_by_slot[CALL_GLOBAL],
                     mode=mode,
                     backend=backend,
-                    model=str(role.model) if not mock_mode else FROZEN_MODEL,
                     per_call_max_tokens=PER_CALL_MAX_TOKENS_HISTORY["1.2"] if bounded else None,
                 )
             except StructuredContentValidationError as exc:
@@ -4133,20 +4068,7 @@ def build_content_composition_dry_run(
         )
     )
     if bounded:
-        scope_unit_limit = (
-            2
-            if role.connection_profile is not None
-            and role.connection_profile.name == PUBLIC_ANONYMOUS_PROFILE
-            else 6
-        )
-        calls_preview = [
-            entry(
-                CALL_SINGLE,
-                build_single_payload(scope.ledgers[0]),
-                len(scope.ledgers[0].units),
-            )
-            for scope in bounded_scopes(inputs, unit_limit=scope_unit_limit)
-        ] + [calls_preview[-1]]
+        calls_preview = [entry(CALL_SINGLE, build_single_payload(scope.ledgers[0]), len(scope.ledgers[0].units)) for scope in bounded_scopes(inputs)] + [calls_preview[-1]]
         for call in calls_preview:
             call["max_tokens"] = PER_CALL_MAX_TOKENS_HISTORY["1.2"][call["call_slot"]]
     assert role.connection_profile is not None

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from ipaddress import ip_address
 import json
 import logging
 import re
@@ -20,7 +21,7 @@ from video_doc.web_service import TaskService, WebServiceError
 LOGGER = logging.getLogger("video_doc.web")
 MAX_JSON_BYTES = 4 * 1024 * 1024
 TASK_ROUTE = r"(?P<task_id>[A-Za-z0-9][A-Za-z0-9_-]{0,63})"
-VERSION_ROUTE = r"(?P<version_id>machine|latest|edit-[0-9]{14}-[0-9a-f]{8})"
+VERSION_ROUTE = r"(?P<version_id>machine|latest|editorial-[0-9a-f]{12})"
 STATIC_ROOT = Path(__file__).resolve().parent / "webui"
 
 
@@ -78,6 +79,22 @@ class VideoDocRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         LOGGER.info("%s - %s", self.address_string(), format % args)
 
+    def _validate_request_source(self) -> None:
+        hosts = self.headers.get_all("Host", [])
+        port = self.server.server_address[1]
+        allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"}
+        if port == 80:
+            allowed_hosts.update({"127.0.0.1", "localhost", "[::1]"})
+        origins = self.headers.get_all("Origin", [])
+        if (
+            not ip_address(self.client_address[0]).is_loopback
+            or len(hosts) != 1
+            or hosts[0].lower() not in allowed_hosts
+            or (origins and origins != [f"http://{hosts[0].lower()}"])
+            or self.headers.get("Sec-Fetch-Site") == "cross-site"
+        ):
+            raise WebServiceError("请求必须来自本机工作区。", status=403, code="INVALID_ORIGIN")
+
     def _request_json(self) -> dict[str, Any]:
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -87,6 +104,8 @@ class VideoDocRequestHandler(BaseHTTPRequestHandler):
             return {}
         if length > MAX_JSON_BYTES:
             raise WebServiceError("请求体过大。", status=413, code="REQUEST_TOO_LARGE")
+        if self.headers.get_content_type() != "application/json":
+            raise WebServiceError("请求须使用JSON。", status=415, code="INVALID_CONTENT_TYPE")
         raw = self.rfile.read(length)
         try:
             value = json.loads(raw.decode("utf-8"))
@@ -123,6 +142,7 @@ class VideoDocRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         try:
+            self._validate_request_source()
             parsed = urlsplit(self.path)
             path = unquote(parsed.path)
             service = self.server.service
@@ -163,7 +183,7 @@ class VideoDocRequestHandler(BaseHTTPRequestHandler):
             match = re.fullmatch(f"/api/tasks/{TASK_ROUTE}/frames/(?P<frame_id>[A-Za-z0-9_-]{{1,80}})", path)
             if match:
                 image_path, mime = service.frame_file(
-                    match.group("task_id"), match.group("frame_id")
+                    match.group("task_id"), match.group("frame_id"), self._query_one(self._query(), "version", "machine")
                 )
                 _file_response(
                     self,
@@ -202,6 +222,7 @@ class VideoDocRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         try:
+            self._validate_request_source()
             parsed = urlsplit(self.path)
             path = unquote(parsed.path)
             query = self._query()

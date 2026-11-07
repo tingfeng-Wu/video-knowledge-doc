@@ -235,7 +235,7 @@ function renderEnvironment(system) {
     `<span class="environment-tag ${ffmpegOk ? "ok" : "warn"}">${ffmpegOk ? "FFmpeg 就绪" : "FFmpeg 缺失"}</span>`,
     `<span class="environment-tag ok">Python ${esc(system.python || "")}</span>`,
     `<span class="environment-tag ${system.model_config ? "ok" : "warn"}">${system.model_config ? "模型角色已配置" : "模型配置缺失"}</span>`,
-    `<span class="environment-tag ${system.llm_provider === "public_anonymous" || system.llm_key_ready ? "ok" : "warn"}">${system.llm_provider === "public_anonymous" ? "匿名线上模型" : system.llm_key_ready ? "模型密钥已配置" : "模型密钥缺失"}</span>`,
+    `<span class="environment-tag ${system.llm_key_ready ? "ok" : "warn"}">${system.llm_key_ready ? "模型密钥已配置" : "模型密钥缺失"}</span>`,
     `<span class="environment-tag">输出目录 ${esc(system.output_root || "outputs")}</span>`,
   ].join("");
 }
@@ -688,7 +688,7 @@ async function saveEdit() {
   button.disabled = true;
   button.innerHTML = `<span class="loading-ring"></span> 正在保存`;
   try {
-    await api(`/api/tasks/${encodeURIComponent(state.currentTaskId)}/edits`, {
+    const saved = await api(`/api/tasks/${encodeURIComponent(state.currentTaskId)}/edits`, {
       method: "POST",
       body: JSON.stringify({
         base_version: state.documentData.selected.version_id,
@@ -700,7 +700,7 @@ async function saveEdit() {
     state.draft = null;
     state.editingDirty = false;
     toast("编辑版本已保存", "机器原稿保持不变，导出将跟随新版本。");
-    await loadDocument(state.currentTaskId, "latest");
+    await loadDocument(state.currentTaskId, saved.version_id);
   } catch (error) {
     button.disabled = false;
     button.textContent = "保存为新版本";
@@ -751,7 +751,7 @@ async function startTask(taskId, overrides = {}) {
     await api(`/api/tasks/${encodeURIComponent(taskId)}/run`, {
       method: "POST",
       body: JSON.stringify({
-        allow_llm: true,
+        allow_llm: false,
         ...overrides,
       }),
     });
@@ -848,7 +848,7 @@ function openCreateDialog() {
   state.createMode = "upload";
   $("#createForm").reset();
   $("#boundedContent").checked = true;
-  $("#allowLlm").checked = true;
+  $("#allowLlm").checked = false;
   $("#startAfterCreate").checked = true;
   $("#selectedFile").hidden = true;
   $$(".source-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.sourceTab === "upload"));
